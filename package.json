@@ -1,0 +1,38 @@
+{
+  "name": "ayah-live",
+  "version": "1.0.0",
+  "description": "Live Quran verse recognition with English translation playback (PWA)",
+  "scripts": {
+    "dev": "vite",
+    "build": "node scripts/build-data.mjs && tsc --noEmit -p tsconfig.json && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "fetch-assets": "node scripts/fetch-assets.mjs",
+    "bench": "tsx bench/run.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@fontsource-variable/instrument-sans": "^5.3.0",
+    "@fontsource/amiri": "^5.3.0",
+    "@tilawa/core": "0.4.0",
+    "onnxruntime-web": "^1.31.1",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5",
+    "vitest": "^5.0.5",
+    "onnxruntime-node": "^1.31.1"
+  },
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  }
+}
