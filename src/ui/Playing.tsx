@@ -1,18 +1,26 @@
 import { quranIndex } from "../core/quran/quranIndex";
 import { playback } from "../app/audio";
+import { catchUpRate } from "../core/playback/controller";
 import { useApp } from "../app/store";
 
 export function Playing() {
   const pb = useApp((s) => s.playback);
+  const settings = useApp((s) => s.settings);
   if (pb.current) {
     const c = pb.current;
     const name = quranIndex.surah(c.v.s)?.nameEn;
+    const waiting = pb.queued.filter((q) => !q.manual).length;
+    const rate = !c.manual && settings.playbackMode === "sequential" && settings.catchUp ? catchUpRate(waiting) : 1;
     return (
       <div className="playing" role="status">
         <span className="bars" aria-hidden="true"><i /><i /><i /></span>
         <span className="what">
           {c.kind === "surah" ? `Full translation of ${name}` : `Translation of ${c.v.s}:${c.v.a}`}
-          <small>{pb.queued.length ? `${pb.queued.length} more after this` : c.manual ? name : "Following the recitation"}</small>
+          <small>
+            {pb.queued.length
+              ? `${pb.queued.length} more waiting${rate > 1 ? ` · catching up ${rate}×` : ""}`
+              : c.manual ? name : "Following the recitation"}
+          </small>
         </span>
         <button className="textbtn" onClick={() => playback.togglePause()}>{pb.paused ? "Resume" : "Pause"}</button>
         <button className="textbtn" onClick={() => (c.manual ? playback.stopAll() : playback.skip())}>{c.manual ? "Stop" : "Skip"}</button>

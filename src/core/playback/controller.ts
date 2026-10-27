@@ -16,6 +16,19 @@ export interface ClipPlayer {
   stop(): void;
   pause(): void;
   resume(): void;
+  /** Playback speed for the clip playing now and the next ones (pitch preserved). */
+  setRate?(rate: number): void;
+}
+
+/**
+ * Catch-up speed when translations fall behind the recitation (short verses are recited faster
+ * than their English is spoken). Never above 1.25×, and only while clips are waiting.
+ */
+export function catchUpRate(waiting: number): number {
+  if (waiting <= 1) return 1;
+  if (waiting === 2) return 1.1;
+  if (waiting <= 4) return 1.15;
+  return 1.25;
 }
 
 export interface PlaybackState {
@@ -24,29 +37,36 @@ export interface PlaybackState {
   queued: PlayItem[];
   /** The last verse whose translation file was not found, for the UI. */
   missing: VerseRef | null;
-  /** Clips dropped to stay close to the live recitation (Follow Live) or by the queue cap. */
+  /** Clips dropped to stay close to the live recitation (Follow Live only; Sequential never drops). */
   skipped: number;
 }
 
 /**
- * Translation playback policy.
+ * Translation playback policy. Recognition never waits for playback: it runs separately and
+ * keeps confirming verses while a translation plays; this decides what plays when.
  *
- * Follow Live (default): at most one clip waits behind the one playing. A newer confirmed
- * verse replaces the waiting one, so playback is never more than one verse behind the imam.
- * Late entries (a verse confirmed after the one that follows it) are not auto-played.
+ * Sequential (default): every confirmed verse plays once, in order, and the clip playing is
+ * never cut short. Verses confirmed while it plays wait their turn — a verse confirmed late
+ * (after the one that follows it) is slotted back into order. While several are waiting,
+ * playback speeds up a little (`catchUpRate`, at most 1.25×) so the English catches up during
+ * short, fast verses and is back to normal speed by the time the imam pauses.
  *
- * Sequential: every confirmed verse plays once, in order. The queue is capped (default 12):
- * beyond that the oldest waiting clips are dropped and counted, never played twice.
+ * Follow Live: at most one clip waits behind the one playing. A newer confirmed verse replaces
+ * the waiting one, so playback is never more than one verse behind — at the cost of skipping.
  *
  * Every history entry auto-plays at most once — overlapping recognition can't retrigger it,
  * and a verse that stays on screen is not replayed. A legitimately repeated verse is a new
- * history entry and plays again. Manual replays interrupt auto playback; auto playback then
- * resumes with the newest waiting clip.
+ * history entry and plays again. Automatic playback never interrupts a clip; only the person
+ * does (a tap to replay, Skip or Stop). After a manual replay, automatic playback resumes with
+ * the clips still waiting.
  */
 export class PlaybackController {
   mode: PlaybackMode;
   autoPlay = true;
-  queueCap = 12;
+  /** Speed up slightly while translations are waiting (Sequential only). */
+  catchUp = true;
+  /** Safety cap only; a salah passage never comes near it. */
+  queueCap = 300;
   private player: ClipPlayer;
   private queue: PlayItem[] = [];
   private current: PlayItem | null = null;
@@ -57,7 +77,7 @@ export class PlaybackController {
   private listeners = new Set<(s: PlaybackState) => void>();
   private running = false;
 
-  constructor(player: ClipPlayer, mode: PlaybackMode = "follow") {
+  constructor(player: ClipPlayer, mode: PlaybackMode = "sequential") {
     this.player = player;
     this.mode = mode;
   }
@@ -89,7 +109,10 @@ export class PlaybackController {
       this.queue = this.queue.filter((q) => q.manual);
       this.queue.push(item);
     } else {
-      this.queue.push(item);
+      // Keep recitation order: a verse confirmed after its successor goes back in front of it.
+      const at = this.queue.findIndex((q) => !q.manual && q.kind === "ayah" && q.v.s === item.v.s && q.v.a > item.v.a);
+      if (at >= 0) this.queue.splice(at, 0, item);
+      else this.queue.push(item);
       const auto = this.queue.filter((q) => !q.manual);
       if (auto.length > this.queueCap) {
         const drop = new Set(auto.slice(0, auto.length - this.queueCap));
@@ -97,8 +120,20 @@ export class PlaybackController {
         this.queue = this.queue.filter((q) => !drop.has(q));
       }
     }
+    this.applyRate();
     this.emit();
     void this.pump();
+  }
+
+  /** Clips waiting behind the one playing (automatic ones only). */
+  get waiting(): number {
+    return this.queue.filter((q) => !q.manual).length;
+  }
+
+  private applyRate(): void {
+    const manual = this.current?.manual ?? false;
+    const rate = this.mode === "sequential" && this.catchUp && !manual ? catchUpRate(this.waiting) : 1;
+    this.player.setRate?.(rate);
   }
 
   /** An ambiguous entry was placed: a clip not yet played follows the new location. */
@@ -160,6 +195,7 @@ export class PlaybackController {
         const item = this.queue.shift()!;
         this.current = item;
         this.paused = false;
+        this.applyRate();
         this.emit();
         const r = await this.player.play(item);
         if (r === "missing") this.missing = item.v;

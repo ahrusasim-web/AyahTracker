@@ -8,6 +8,8 @@ export interface Settings {
   sensitivity: Sensitivity;
   playbackMode: PlaybackMode;
   autoTranslate: boolean;
+  /** Speed translations up slightly (≤1.25×) while several are waiting. */
+  catchUp: boolean;
   keepScreenOn: boolean;
   /** Translations play through the phone speaker: let the browser cancel them from the mic. */
   speakerMode: boolean;
@@ -20,8 +22,9 @@ export interface Settings {
 export const DEFAULT_SETTINGS: Settings = {
   prayer: "general",
   sensitivity: "balanced",
-  playbackMode: "follow",
+  playbackMode: "sequential",
   autoTranslate: true,
+  catchUp: true,
   keepScreenOn: true,
   speakerMode: false,
   conditioning: true,
@@ -67,13 +70,17 @@ export interface AppState {
   mediaKeysAvailable: boolean;
 }
 
-const SETTINGS_KEY = "ayahlive.settings.v1";
+const SETTINGS_KEY = "ayahlive.settings.v2";
+/** v1 defaulted to Follow Live; v2 keeps everything else the user chose but moves to Sequential. */
+const OLD_SETTINGS_KEY = "ayahlive.settings.v1";
 const SESSIONS_KEY = "ayahlive.sessions.v1";
 
 function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (raw) return { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+    const old = localStorage.getItem(OLD_SETTINGS_KEY);
+    if (old) return { ...DEFAULT_SETTINGS, ...JSON.parse(old), playbackMode: "sequential" };
   } catch {
     /* storage unavailable */
   }

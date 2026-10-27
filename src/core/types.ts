@@ -54,7 +54,8 @@ export interface ConfirmedVerse {
   via: ConfirmVia;
   /** Other locations with word-for-word identical text when context could not decide. */
   ambiguousWith?: VerseRef[];
-  /** Confirmed after a later verse (recogniser emitted it late); not auto-played in Follow Live. */
+  /** Confirmed after a later verse (recogniser emitted it late). Sequential playback slots it
+   *  back into order; Follow Live does not auto-play it. */
   late?: boolean;
   segment: number;
 }

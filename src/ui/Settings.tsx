@@ -16,6 +16,7 @@ export function update(patch: Partial<S>): void {
     return { settings };
   });
   if ("playbackMode" in patch) playback.mode = patch.playbackMode!;
+  if ("catchUp" in patch) playback.catchUp = patch.catchUp!;
   if ("autoTranslate" in patch) {
     playback.autoPlay = patch.autoTranslate!;
     if (!patch.autoTranslate) playback.stopAll();
@@ -104,12 +105,15 @@ export function Settings({ onClose, onOpenLibrary, onOpenSessions }: { onClose: 
 
         <section>
           <h3>Translation playback</h3>
-          <Seg label="Playback mode" value={s.playbackMode} onChange={(playbackMode) => update({ playbackMode })} options={[["follow", "Follow live"], ["sequential", "Every verse in order"]]} />
+          <Seg label="Playback mode" value={s.playbackMode} onChange={(playbackMode) => update({ playbackMode })} options={[["sequential", "Every ayah, in order"], ["follow", "Stay close to live"]]} />
           <p>
-            {s.playbackMode === "follow"
-              ? "Never more than one verse behind the imam: if verses come faster than their translations, older ones are skipped."
-              : "Plays every confirmed verse once, in order. Up to 12 can wait; beyond that the oldest waiting ones are skipped."}
+            {s.playbackMode === "sequential"
+              ? "Each translation plays to the end, then the next. Recognition keeps going in the background, so ayahs recited meanwhile wait their turn and none are skipped."
+              : "Never more than one ayah behind the imam: if ayahs come faster than their translations, the waiting ones are skipped."}
           </p>
+          {s.playbackMode === "sequential" && (
+            <Toggle checked={s.catchUp} onChange={(catchUp) => update({ catchUp })} title="Catch up when behind" detail="Plays slightly faster (up to 1.25×) while several translations are waiting, back to normal once caught up." />
+          )}
           <Toggle checked={s.autoTranslate} onChange={(autoTranslate) => update({ autoTranslate })} title="Play translations automatically" detail="Off: verses are still recognised and listed; tap one to hear it." />
         </section>
 

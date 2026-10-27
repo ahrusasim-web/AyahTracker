@@ -143,15 +143,22 @@ estimate makes evidence heard through poor audio count for less.
 - **Exact resolver.** A verse resolves only to a file named for that verse; unpadded name wins
   deterministically if both `92-2.mp3` and `92-02.mp3` exist. Missing file → "No translation
   file for 29:12", tracking continues. Whole-surah files are separate from verse files.
-- **Follow live** (default): never more than one verse behind — one clip plays, one waits, a
-  newer verse replaces the waiting one. **Every verse in order**: FIFO, capped at 12.
+- **Recognition and playback run separately.** Recognition lives in its own worker and never
+  waits for a translation to finish; it keeps confirming verses while one plays.
+- **Every ayah, in order** (default): each translation plays to its end, then the next. Verses
+  confirmed meanwhile wait their turn; one confirmed late is slotted back into order; nothing is
+  dropped. In short, fast surahs the English falls behind, so while two or more clips are
+  waiting playback speeds up slightly (1.1× / 1.15× / at most 1.25×, pitch preserved) and returns
+  to normal speed once caught up — usually during the pause before ruku'. Can be turned off.
+- **Stay close to live**: never more than one verse behind — one clip plays, one waits, a newer
+  verse replaces the waiting one (older ones are skipped).
 - **Summaries** group a session's verses into passages (one surah, moving forward, no long gap)
   and show Abdel Haleem's English for the whole range. The text is fetched per surah from
   Quran.com's public API the first time it's needed (prefetched as soon as a passage starts) and
   cached on the phone; it is never bundled in this repository.
 - Each history entry auto-plays at most once; a legitimately repeated verse is a new entry and
-  plays again. One `<audio>` element for translations, so clips never overlap. Manual replays
-  interrupt and can be paused/stopped.
+  plays again. One `<audio>` element for translations, so clips never overlap. Automatic playback
+  never cuts a clip short — only you do (a tap to replay, Skip, Stop).
 
 ---
 

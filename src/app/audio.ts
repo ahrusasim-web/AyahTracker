@@ -18,7 +18,7 @@ class ElementPlayer implements ClipPlayer {
     const src = await resolveAyahClip(v).catch(() => null);
     if (!src) return;
     this.ready.set(k, src);
-    while (this.ready.size > 4) this.ready.delete(this.ready.keys().next().value!);
+    while (this.ready.size > 8) this.ready.delete(this.ready.keys().next().value!);
   }
   private finish: ((r: "ended" | "stopped" | "missing" | "error") => void) | null = null;
 
@@ -60,6 +60,11 @@ class ElementPlayer implements ClipPlayer {
     this.el.pause();
     this.done("stopped");
   }
+  setRate(rate: number): void {
+    // preservesPitch is the default in current browsers: faster, not higher.
+    if (Math.abs(this.el.playbackRate - rate) > 0.001) this.el.playbackRate = rate;
+    this.el.defaultPlaybackRate = rate;
+  }
   pause(): void {
     this.el.pause();
   }
@@ -72,6 +77,7 @@ const player = new ElementPlayer();
 export const playback = new PlaybackController(player, getState().settings.playbackMode);
 export const prefetchClip = (v: { s: number; a: number }) => void player.prefetch(v);
 playback.autoPlay = getState().settings.autoTranslate;
+playback.catchUp = getState().settings.catchUp;
 playback.subscribe((p) => setState({ playback: p }));
 
 // --- listening cues ---------------------------------------------------------------------

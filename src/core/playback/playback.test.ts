@@ -56,6 +56,9 @@ describe("translation file resolver", () => {
 
 class FakePlayer implements ClipPlayer {
   log: string[] = [];
+  rate = 1;
+  rates: number[] = [];
+  setRate(r: number) { if (r !== this.rate) this.rates.push(r); this.rate = r; }
   private resolve: ((r: "ended" | "stopped") => void) | null = null;
   play(item: PlayItem) {
     this.log.push(`${item.kind}:${item.v.s}:${item.v.a}${item.manual ? "m" : ""}`);
@@ -123,6 +126,56 @@ describe("playback policy", () => {
     await p.end(); // manual ends
     await p.end();
     expect(p.log).toEqual(["ayah:104:1", "surah:104:0m", "ayah:104:2"]);
+  });
+
+  it("defaults to Sequential: a fast short surah never cuts a translation short or skips one", async () => {
+    const p = new FakePlayer();
+    const c = new PlaybackController(p);
+    let stopped = 0;
+    const stop = p.stop.bind(p);
+    p.stop = () => { stopped++; stop(); };
+    // Al-Kawthar recited faster than its translation: all three confirmed while 108:1 plays.
+    c.onConfirmed(entry(108, 1));
+    await tick();
+    c.onConfirmed(entry(108, 2));
+    c.onConfirmed(entry(108, 3));
+    c.onConfirmed(entry(112, 1));
+    expect(stopped).toBe(0);
+    await p.end(); await p.end(); await p.end(); await p.end();
+    expect(p.log).toEqual(["ayah:108:1", "ayah:108:2", "ayah:108:3", "ayah:112:1"]);
+    expect(c.state.skipped).toBe(0);
+  });
+
+  it("catches up gently while translations wait, back to normal speed when caught up", async () => {
+    const p = new FakePlayer();
+    const c = new PlaybackController(p, "sequential");
+    c.onConfirmed(entry(103, 1));
+    await tick();
+    expect(p.rate).toBe(1);
+    c.onConfirmed(entry(103, 2));
+    expect(p.rate).toBe(1); // one waiting: normal speed
+    c.onConfirmed(entry(103, 3));
+    expect(p.rate).toBe(1.1); // applied to the clip already playing
+    await p.end(); // 103:2 starts with one waiting
+    expect(p.rate).toBe(1);
+    await p.end(); await p.end();
+    expect(Math.max(...p.rates)).toBeLessThanOrEqual(1.25);
+    c.catchUp = false;
+    c.onConfirmed(entry(104, 1)); await tick();
+    c.onConfirmed(entry(104, 2)); c.onConfirmed(entry(104, 3)); c.onConfirmed(entry(104, 4));
+    expect(p.rate).toBe(1);
+  });
+
+  it("Sequential slots a late verse back into recitation order", async () => {
+    const p = new FakePlayer();
+    const c = new PlaybackController(p, "sequential");
+    c.onConfirmed(entry(36, 4));
+    await tick();
+    c.onConfirmed(entry(36, 6));
+    c.onConfirmed(entry(36, 7));
+    c.onConfirmed(entry(36, 5, { late: true }));
+    await p.end(); await p.end(); await p.end(); await p.end();
+    expect(p.log).toEqual(["ayah:36:4", "ayah:36:5", "ayah:36:6", "ayah:36:7"]);
   });
 
   it("late entries are not auto-played in Follow Live", async () => {
