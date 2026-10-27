@@ -84,17 +84,20 @@ export class TilawaRecognizer implements Recognizer {
 
   /** Word evidence for one verse from the aligner's settled verdicts. */
   private evidence(v: VerseRef): WordEvidence | undefined {
-    const tracer = (this.session as unknown as { engine?: { tracer?: { verdicts(settled: boolean): { surah: number; ayah: number; state: string; distance: number; margin: number }[] } } }).engine?.tracer;
+    const tracer = (this.session as unknown as { engine?: { tracer?: { verdicts(settled: boolean): unknown[] } } }).engine?.tracer;
     if (!tracer) return undefined;
-    let heard = 0, strong = 0, wrong = 0;
-    for (const w of tracer.verdicts(true)) {
+    let heard = 0, strong = 0, wrong = 0, first = false;
+    for (const w of tracer.verdicts(true) as { surah: number; ayah: number; word: number; state: string; distance: number; margin: number; heardRatio?: number }[]) {
       if (w.surah !== v.s || w.ayah !== v.a) continue;
+      const confident = w.distance <= STRONG_MAX_DISTANCE && w.margin >= STRONG_MIN_MARGIN;
       if (w.state === "ok" || w.state === "unsure") {
         heard++;
-        if (w.distance <= STRONG_MAX_DISTANCE && w.margin >= STRONG_MIN_MARGIN) strong++;
+        if (confident) strong++;
       } else if (w.state === "wrong") wrong++;
+      // The opening word, even while it is still being recited: mostly heard, closely.
+      if (w.word === 0 && w.state !== "wrong" && w.state !== "skipped" && confident && (w.heardRatio ?? 0) >= 0.6) first = true;
     }
-    return { heard, strong, wrong };
+    return { heard, strong, wrong, first };
   }
 
   private convert(msgs: WorkerOutbound[], t: number): Observation[] {

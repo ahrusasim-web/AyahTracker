@@ -15,29 +15,37 @@ interface MenuState {
 
 export function History() {
   const history = useApp((s) => s.history);
-  const current = useApp((s) => s.playback.current);
   const listen = useApp((s) => s.listen);
-  const [menu, setMenu] = useState<MenuState | null>(null);
-  const rows = [...history].reverse();
-
   return (
     <section className="history" aria-label="Verses heard this session">
       <h2>
         Heard this session {history.length > 0 && <span>{history.length} {history.length === 1 ? "verse" : "verses"} · tap to replay</span>}
       </h2>
-      {rows.length === 0 ? (
+      {history.length === 0 ? (
         <p className="empty">
           {listen === "listening" ? "Confirmed verses will appear here as they are recited." : <>Press <b>Start listening</b> when the recitation begins.</>}
         </p>
       ) : (
-        <ol>
-          {rows.map((h) => (
-            <Row key={h.id} entry={h} playing={current?.entryId === h.id} onMenu={(x, y) => setMenu({ entry: h, x, y })} />
-          ))}
-        </ol>
+        <VerseList entries={history} newestFirst />
       )}
-      {menu && <EntryMenu {...menu} onClose={() => setMenu(null)} />}
     </section>
+  );
+}
+
+/** Timestamped verses: tap to replay a translation, long-press or ⋯ for more. */
+export function VerseList({ entries, newestFirst = false }: { entries: HistoryEntry[]; newestFirst?: boolean }) {
+  const current = useApp((s) => s.playback.current);
+  const [menu, setMenu] = useState<MenuState | null>(null);
+  const rows = newestFirst ? [...entries].reverse() : entries;
+  return (
+    <>
+      <ol className="verses">
+        {rows.map((h) => (
+          <Row key={h.id} entry={h} playing={current?.entryId === h.id && current.kind === "ayah"} onMenu={(x, y) => setMenu({ entry: h, x, y })} />
+        ))}
+      </ol>
+      {menu && <EntryMenu {...menu} onClose={() => setMenu(null)} />}
+    </>
   );
 }
 
@@ -87,6 +95,7 @@ function Row({ entry, playing, onMenu }: { entry: HistoryEntry; playing: boolean
         <span className="name">
           {surah?.nameEn}
           {entry.ambiguousWith?.length ? <em> · same words in {entry.ambiguousWith.length} other places</em> : null}
+          {entry.via === "inferred" ? <em> · between two heard verses</em> : null}
         </span>
       </button>
       <button className="iconbtn more" aria-label={`More for ${entry.v.s}:${entry.v.a}`} onClick={(e) => {

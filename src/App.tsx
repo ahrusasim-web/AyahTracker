@@ -1,10 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { initLibrary } from "./app/library";
 import { initEngine, toggleListening } from "./app/listener";
 import { setState, useApp } from "./app/store";
 import { PRIORS } from "./core/tracker/priors";
+import { buildPassages } from "./core/session/passages";
+import { LibraryScreen, LibrarySurahScreen } from "./ui/Library";
+import { PassageCard } from "./ui/PassageCard";
+import { SessionScreen, SessionsScreen } from "./ui/Sessions";
 import { History } from "./ui/History";
-import { GearIcon, CloseIcon, MicIcon, StopIcon } from "./ui/icons";
+import { GearIcon, CloseIcon, MicIcon, SessionsIcon, StopIcon } from "./ui/icons";
 import { Now } from "./ui/Now";
 import { Playing } from "./ui/Playing";
 import { Settings, update } from "./ui/Settings";
@@ -71,34 +75,86 @@ function Notice() {
   );
 }
 
+/** The latest passage once it has finished: a pause, a new surah, or listening stopped. */
+function JustRecited() {
+  const history = useApp((s) => s.history);
+  const listen = useApp((s) => s.listen);
+  const tracker = useApp((s) => s.tracker);
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 2000);
+    return () => clearInterval(id);
+  }, []);
+  const passages = useMemo(() => buildPassages(history), [history]);
+  if (!passages.length) return null;
+  const last = passages[passages.length - 1]!;
+  const lastDone = listen !== "listening" || (tracker !== "tracking" && now - last.endedAt > 8000);
+  const done = lastDone ? last : passages.length > 1 ? passages[passages.length - 2]! : null;
+  if (!done) return null;
+  return (
+    <section className="justrecited" aria-label="Just recited">
+      <h2>Just recited</h2>
+      <PassageCard p={done} />
+    </section>
+  );
+}
+
+type View = { name: "main" } | { name: "sessions" } | { name: "session"; startedAt: number } | { name: "library" } | { name: "librarySurah"; s: number };
+
 export function App() {
+  const [view, setView] = useState<View>({ name: "main" });
   const [settingsOpen, setSettingsOpen] = useState(false);
   const lib = useApp((s) => s.library);
   useEffect(() => {
     initEngine();
     void initLibrary();
   }, []);
+
+  const overlay =
+    view.name === "sessions" ? <SessionsScreen onBack={() => setView({ name: "main" })} onOpen={(startedAt) => setView({ name: "session", startedAt })} />
+    : view.name === "session" ? <SessionScreen startedAt={view.startedAt} onBack={() => setView({ name: "sessions" })} />
+    : view.name === "library" ? <LibraryScreen onBack={() => setView({ name: "main" })} onOpen={(s) => setView({ name: "librarySurah", s })} />
+    : view.name === "librarySurah" ? <LibrarySurahScreen s={view.s} onBack={() => setView({ name: "library" })} />
+    : null;
+
   return (
     <div className="app">
       <Notice />
-      <div className="topbar">
-        <StatusLine />
-        <button className="iconbtn" aria-label="Settings" onClick={() => setSettingsOpen(true)}><GearIcon /></button>
-      </div>
-      <Now />
-      <Playing />
-      {lib.source === "none" && !lib.importing && (
-        <div className="playing note" role="note">
-          <span className="what">
-            Add your English translation files to hear them
-            <small>Settings → Your translation files. Recognition works without them.</small>
-          </span>
-          <button className="textbtn" onClick={() => setSettingsOpen(true)}>Add files</button>
-        </div>
+      {overlay ? (
+        <>
+          {overlay}
+          <div className="dock slim"><Playing /></div>
+        </>
+      ) : (
+        <>
+          <div className="topbar">
+            <StatusLine />
+            <button className="iconbtn" aria-label="Sessions" onClick={() => setView({ name: "sessions" })}><SessionsIcon /></button>
+            <button className="iconbtn" aria-label="Settings" onClick={() => setSettingsOpen(true)}><GearIcon /></button>
+          </div>
+          <Now />
+          <Playing />
+          {lib.source === "none" && !lib.importing && (
+            <div className="playing note" role="note">
+              <span className="what">
+                Add your English translation files to hear them
+                <small>Recognition and summaries work without them.</small>
+              </span>
+              <button className="textbtn" onClick={() => setSettingsOpen(true)}>Add files</button>
+            </div>
+          )}
+          <JustRecited />
+          <History />
+          <Dock />
+        </>
       )}
-      <History />
-      <Dock />
-      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {settingsOpen && (
+        <Settings
+          onClose={() => setSettingsOpen(false)}
+          onOpenLibrary={() => { setSettingsOpen(false); setView({ name: "library" }); }}
+          onOpenSessions={() => { setSettingsOpen(false); setView({ name: "sessions" }); }}
+        />
+      )}
     </div>
   );
 }

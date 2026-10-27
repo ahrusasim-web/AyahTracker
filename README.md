@@ -1,8 +1,10 @@
 # Ayah Live
 
 A mobile-first web app (PWA) that listens to Quran recitation — an imam in salah, a recording,
-or your own recitation — identifies the surah and ayah being recited as it happens, and plays
-**your own** pre-recorded English translation of each verse (`29-11.mp3`, `104.mp3` …).
+or your own recitation — identifies the surah and ayah being recited as it happens, plays
+**your own** pre-recorded English translation of each verse (`29-11.mp3`, `104.mp3` …), and
+when a passage ends, summarises it ("Al-Mulk, Ayahs 1–4") with Abdel Haleem's English
+translation as one paragraph. Every session is kept on the phone to browse later.
 
 Recognition runs entirely on the phone. No audio is sent anywhere.
 
@@ -21,7 +23,7 @@ mic ─► AudioWorklet ─► worker: resample 16 kHz ─► conditioner ─►
 
 ```bash
 npm install --ignore-scripts      # --ignore-scripts skips onnxruntime-node's optional GPU download
-npm run fetch-assets              # 69 MB model + Quran text from Tilawa's GitHub releases, SHA-256 verified
+npm run fetch-assets              # 69 MB model + phoneme corpus from Tilawa's GitHub releases, SHA-256 verified
 npm test                          # tracker, resolver and playback-policy tests
 npm run dev                       # http://localhost:5173
 ```
@@ -39,28 +41,33 @@ The microphone needs a secure origin. `localhost` works on a computer; for your 
 Any static host with HTTPS that allows a 69 MB file works (GitHub Pages, Netlify; not
 Cloudflare Pages, which caps files at 25 MB). `npm run build` produces `dist/`; serve it as-is.
 
-The first visit downloads the recogniser once (≈69 MB model + 9 MB data + 15 MB runtime); it is
+The first visit downloads the recogniser once (≈69 MB model + 5 MB corpus + 15 MB runtime); it is
 cached on the phone after that and the app works offline.
 
 ---
 
 ## Using it
 
-1. **Settings → Your translation files → Choose folder** (or *Choose files* and select all).
+1. **Settings → Your translation audio → Add folder** (or *Add files* and select all).
    Accepted names, case-insensitive:
    - one verse: `92-2.mp3`, `92-02.mp3`, `114-06.mp3`, `092-002.mp3`
    - whole surah: `104.mp3`
    - optional cues: `start.mp3`, `stop.mp3` (otherwise the bundled `assets/audio/` chimes play)
 
-   Files are stored on the phone (IndexedDB) and never uploaded. Alternatively set a hosted
-   folder URL (e.g. `translations/` deployed next to the app; an optional `index.json` listing
-   the file names avoids probing).
+   Files are stored on the phone (IndexedDB) and never uploaded. *Browse and play* shows which
+   surahs and ayahs you have (with a *Missing files* filter); open a surah to see its ayahs as
+   tiles and tap one to play from there in order, or play its whole-surah file. *More options*
+   has an optional hosted folder URL (an `index.json` listing the names avoids probing).
 2. Pick the prayer: **General · Jummah · Maghrib · Isha**.
-3. **Start listening.** The big ornament shows the verse: brass while it is still being heard,
-   verdigris once confirmed. Confirmed verses are listed with their time.
-4. **Tap** a history row to replay that verse's translation. **Long-press** (or right-click, or
-   the ⋯ button) for *Play full surah translation*.
-5. Earbud **play/pause** toggles listening (see limitations below).
+3. **Start listening.** The ornament shows the verse: brass while it is being heard, verdigris
+   once confirmed. Confirmed verses are listed with their time.
+4. When a passage ends (a pause, a new surah, or you stop), **Just recited** shows the range and
+   Abdel Haleem's English for it. *Settings → Passage summaries → Save all for offline* stores the
+   whole translation text on the phone; *Use my own file* imports a translation instead
+   (JSON keyed `"2:255"`, or `surah|ayah|text` lines).
+5. **Tap** a verse to replay its translation; **long-press** (or ⋯) for *Play full surah translation*.
+6. The **clock icon** opens every past session: its passages with their summaries, and every verse.
+7. Earbud **play/pause** toggles listening (see limitations below).
 
 Use earbuds: translations played through the phone speaker are heard by the microphone. If you
 must use the speaker, turn on *Translations play through the phone speaker* (browser echo
@@ -89,19 +96,30 @@ The recogniser proposes; the tracker decides. Two states, as specified:
 
 Rules, in order:
 
-- **Continuation.** The verse after the last confirmed one (or one later, if one was missed) is
-  confirmed from its *own* words: half of a short verse, or 4 words of a long one. Never from
-  zero words — the expected next verse is never substituted for audio evidence.
+- **On course.** While a passage is being recited (same surah, no pause), the next ayah is
+  confirmed as soon as its *first word* is mostly and confidently heard — the recogniser's
+  search also leans toward it, and its translation clip is pre-loaded so playback starts
+  instantly. It is never confirmed from zero words: the app does not pre-play the next verse
+  before it is heard, because the one time that guess fails is when the imam stops for ruku.
+- **No gaps.** If the recogniser misses a verse between two confirmed neighbours (102:2 → 102:4),
+  the one in between (102:3) is filled in, marked "between two heard verses" — reciters in salah
+  don't skip.
+- **Continuation that only noise supports.** Crowd murmur after a passage can get aligned to the
+  next verse; such a verse has no confidently heard word (measured: distance ≤ 0.2 and model
+  margin ≥ 0.5 on at least one word). It is held until a confident verse follows and dropped at
+  a pause.
 - **Discovery** (first verse, after a pause, after Al-Fatihah, after a surah's last verse) is
   accepted on the recogniser's gate unless it is *risky*: very short (≤3 words), its opening
   half also opens another verse, ≥75% word-identical to another verse, heard through poor
-  audio, or the basmala. Risky proposals are held until the next verse continues them or nearly
-  all of their own words are heard.
+  audio, or the basmala (except at the start of a rak'ah in a prayer context, where it opens
+  Al-Fatihah). Risky proposals are held until the next verse continues them or nearly all of
+  their own words are heard.
 - **Jumps** away from a running passage without a pause are always held until corroborated; if
   the recogniser returns to the passage, the jump is dropped.
-- **Pauses** (≥4 s without recitation) reset the recogniser, so Al-Fatihah — or any verse the
-  imam repeats — is heard again in every rak'ah (the bare SDK reports each verse once per session;
-  see benchmark *salah* rows).
+- **Pauses** (≥4 s without recitation, or murmur with no confident word for 7–15 s) reset the
+  recogniser, so Al-Fatihah — or any verse the imam repeats — is heard again in every rak'ah
+  (the bare SDK reports each verse once per session; see benchmark *salah* rows). Verses found
+  again within 30 s of a murmur-triggered reset are not double-counted.
 - **Identical verses** (96 groups, e.g. 55:13 ×31, 77:15 ×10, the *Ha Mim* openings) are placed
   by context; with no context they are confirmed with their alternatives listed ("same words in
   30 other places") and revised automatically once the next verse settles the location.
@@ -127,6 +145,10 @@ estimate makes evidence heard through poor audio count for less.
   file for 29:12", tracking continues. Whole-surah files are separate from verse files.
 - **Follow live** (default): never more than one verse behind — one clip plays, one waits, a
   newer verse replaces the waiting one. **Every verse in order**: FIFO, capped at 12.
+- **Summaries** group a session's verses into passages (one surah, moving forward, no long gap)
+  and show Abdel Haleem's English for the whole range. The text is fetched per surah from
+  Quran.com's public API the first time it's needed (prefetched as soon as a passage starts) and
+  cached on the phone; it is never bundled in this repository.
 - Each history entry auto-plays at most once; a legitimately repeated verse is a new entry and
   plays again. One `<audio>` element for translations, so clips never overlap. Manual replays
   interrupt and can be paused/stopped.
@@ -152,19 +174,46 @@ ruku/sujud gap → Fatihah → passage), **midstart** (listening starts 3 s into
 first verse is optional), **noise** (60 s of babble, coughs, reversed and syllable-shuffled
 recitation — Arabic-sounding audio that is not Quran in order; nothing should be confirmed).
 
-Interim results (clean audio, first pass; the full four-condition run is still in progress):
+**This app** (recall = share of recited verses confirmed · wrong = verses confirmed that were not recited):
 
-| Variant | Kind | Streams | Recall | Wrong | Exact sequence |
-|---|---|---|---|---|---|
-| This app (tracker) | single verse | 20 | 95% | 0 | 95% |
-| Bare Tilawa SDK | single verse | 20 | 95% | 0 | 95% |
-| This app (tracker) | salah (2 rak'ahs) | 12 | 99.7% | 0 | 92% |
-| Bare Tilawa SDK | salah (2 rak'ahs) | 12 | 70.2% | 0 | 0% |
+| Condition | Single verse (80) | Salah, 2 rak'ahs (12) | Starts mid-passage (16) | Noise only (10) |
+|---|---|---|---|---|
+| clean | 90% · 0 wrong | 99.7% · 0 wrong | 100% · 0 wrong | 0 false |
+| mild room | 90% · 0 wrong | 99.7% · 0 wrong | 100% · 0 wrong | 0 false |
+| mosque hall | 77.5% · 0 wrong | 97.2% · 0 wrong | 100% · 0 wrong | 0 false |
+| phone in pocket | 49% · 0 wrong | 73.8% · 1 wrong | 76% · 0 wrong | 0 false |
 
-The salah gap is the second-rak'ah Al-Fatihah: the bare SDK reports each verse once per
-session, so it never confirms Al-Fatihah again; the pause reset fixes that. The one tracker
-miss was 44:1 (*Ha Mim*, identical in seven surahs), since fixed by resolving held identical
-verses from the verse that follows (unit-tested).
+**Bare Tilawa SDK** on the same streams (its own verse events, no tracker):
+
+| Condition | Single verse | Salah | Starts mid-passage | Noise only |
+|---|---|---|---|---|
+| clean | 90% · 0 wrong | 70.2% · 0 wrong | 100% · 0 wrong | 0 false |
+| mild room | 89% · 0 wrong | 70.2% · 0 wrong | 100% · 0 wrong | 0 false |
+| mosque hall | 79% · 0 wrong | 69.1% · 5 wrong | 100% · 0 wrong | 3 false |
+| phone in pocket | 55% · 1 wrong | 58.5% · 4 wrong | 81% · 1 wrong | 0 false |
+
+The salah gap is mostly the second-rak'ah Al-Fatihah, which the SDK never reports twice, and
+crowd murmur during ruku aligned to "the next verse". On single short verses in the worst audio
+the tracker is deliberately stricter than the SDK (it holds very short or look-alike verses until
+they are fully heard).
+
+**Speed** (`bench/latency.ts`: time from the start of a verse's Arabic audio to its confirmation,
+on 240 verses of the salah passages):
+
+| | next verse of a running passage | first verse of a passage |
+|---|---|---|
+| clean, before "on course" | median 2.24 s · p90 3.98 s | median 8.9 s |
+| clean, now | **median 1.44 s · p90 2.58 s** | median 8.9 s |
+| mosque hall, now | median 1.49 s · p90 3.22 s | median 9.2 s |
+
+The remaining ~1.4 s is the reciter's opening word plus the model's ~0.5 s listening window: the
+app can't know the next verse has started until it has heard it. The first verse of a passage
+takes longer because it is found by searching the whole Quran, and a short or shared opening
+(a basmala, *Ha Mim*, *Alif Lam Mim*) waits for the verse after it.
+
+**Other measurements:** Tilawa's FastConformer engine streaming the same clips: 93% recall but 48
+wrong confirmations in 30 clean clips, and 1.8× real time on this CPU (too slow). Audio clean-up
+on vs off, mosque-hall salah: 1 vs 6 wrong confirmations.
 
 *Recall* counts word-identical verses as correct (audio cannot separate them), as in Tilawi's
 evaluation. *Wrong* = verses confirmed that were not recited. Latency is from the end of the
@@ -177,6 +226,7 @@ Reproduce: clone `https://github.com/yazinsai/tilawa` for the source audio, then
 ```bash
 python3 bench/make_corpus.py <tilawa>/lab/benchmark bench/data --singles 120
 npx tsx bench/run.ts --data bench/data --variants tracker,baseline --out results.json
+npx tsx bench/latency.ts --data bench/data --conds clean,hall
 ```
 
 The best test is your own: record a Jummah/Maghrib/Isha recitation on your phone and run it
@@ -218,6 +268,8 @@ src/core/            framework-free, unit-tested, used by the app and the benchm
   engine/            Recognizer interface + Tilawa adapter (swap models here)
   tracker/           VerseTracker, prayer priors
   playback/          exact file resolver, playback policy
+  session/           passage grouping for summaries
+  text/              translation-text parsing (Quran.com responses, imported files)
   pipeline.ts        conditioner → recogniser → tracker, pause resets
 src/app/             browser glue: worker, mic/worklet, media session, wake lock, IndexedDB
 src/ui/              React components
@@ -233,5 +285,9 @@ bench/               corpus builder and benchmark harness
   non-commercial, share-alike (`public/models/NPL-1.2.txt`). You may not charge for the app or
   any feature it powers.
 - `@tilawa/core` SDK: MIT. ONNX Runtime: MIT.
-- Quran text: Tanzil Project Uthmani text (CC-BY 3.0), used verbatim.
-- Fonts: Amiri and Instrument Sans (SIL OFL).
+- Quran text used to verify verse counts at build time: Tanzil Project Uthmani text (CC-BY 3.0),
+  verbatim. The app shows no Arabic.
+- English summaries: M.A.S. Abdel Haleem, *The Qur'an: A New Translation* (Oxford University
+  Press), loaded at run time from Quran.com and cached on the user's device, not redistributed
+  here.
+- Font: Instrument Sans (SIL OFL).

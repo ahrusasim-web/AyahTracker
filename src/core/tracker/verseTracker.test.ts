@@ -30,14 +30,32 @@ describe("VerseTracker", () => {
     expect(confirmed(evs)).toEqual(["77:1", "77:2", "77:3"]);
   });
 
-  it("confirms a long continuation verse early from its own words, never from zero words", () => {
+  it("on course, confirms the next verse on its first heard word — never from zero words", () => {
     const t = new VerseTracker();
     run(t, [act(), match(2, 255)]);
     expect(confirmed(run(t, [prog(2, 256, 0)]))).toEqual([]);
-    expect(confirmed(run(t, [prog(2, 256, 3)]))).toEqual([]);
-    expect(confirmed(run(t, [prog(2, 256, 4)]))).toEqual(["2:256"]);
+    expect(confirmed(run(t, [prog(2, 256, 1)]))).toEqual(["2:256"]);
     // the recogniser's later gate for the same verse is not a second confirmation
     expect(confirmed(run(t, [match(2, 256)]))).toEqual([]);
+  });
+
+  it("needs a confident first word, not just an aligned one", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(2, 255)]);
+    // a later word confident but the opening word not: wait for more of the verse
+    const weakOpening: Observation = { ...prog(2, 256, 1), evidence: { heard: 1, strong: 1, wrong: 1, first: false } } as Observation;
+    expect(confirmed(run(t, [weakOpening]))).toEqual([]);
+    const strongOpening: Observation = { ...prog(2, 256, 1), evidence: { heard: 1, strong: 1, wrong: 0, first: true } } as Observation;
+    expect(confirmed(run(t, [strongOpening]))).toEqual(["2:256"]);
+  });
+
+  it("fills in a verse the recogniser skipped between two confirmed neighbours", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(102, 1), match(102, 2)]);
+    const evs = run(t, [match(102, 4)]);
+    expect(confirmed(evs)).toEqual(["102:3", "102:4"]);
+    const inferred = evs.find((e) => e.type === "confirmed" && e.entry.via === "inferred");
+    expect(inferred).toBeTruthy();
   });
 
   it("hears Al-Fatihah again after a pause (second rak'ah)", () => {
@@ -52,7 +70,7 @@ describe("VerseTracker", () => {
     let evs = run(t, [act(), match(1, 1)]);
     expect(confirmed(evs)).toEqual([]);
     evs = run(t, [prog(1, 2, 1)]);
-    expect(confirmed(evs)).toEqual(["1:1"]);
+    expect(confirmed(evs)).toEqual(["1:1", "1:2"]);
 
     const u = new VerseTracker();
     evs = run(u, [act(), match(1, 1), prog(91, 1, 2), match(91, 1)]);
@@ -97,7 +115,7 @@ describe("VerseTracker", () => {
     const t = new VerseTracker();
     run(t, [act(), match(36, 1), match(36, 2), match(36, 3)]);
     const evs = run(t, [match(67, 1), prog(67, 2, 1)]);
-    expect(confirmed(evs)).toEqual(["67:1"]);
+    expect(confirmed(evs)).toEqual(["67:1", "67:2"]);
   });
 
   it("resolves a held 'Ha Mim' to the surah that continues", () => {
@@ -105,7 +123,7 @@ describe("VerseTracker", () => {
     let evs = run(t, [act(), match(40, 1)]);
     expect(confirmed(evs)).toEqual([]);
     evs = run(t, [prog(44, 2, 1)]);
-    expect(confirmed(evs)).toEqual(["44:1"]);
+    expect(confirmed(evs)).toEqual(["44:1", "44:2"]);
   });
 
   it("holds a short discovered verse until all of it is heard (general), but not when favoured (Maghrib)", () => {

@@ -15,7 +15,7 @@ export type ToWorker =
   | { type: "settings"; settings: EngineSettings };
 
 export type FromWorker =
-  | { type: "loading"; stage: "model" | "corpus" | "text" | "runtime"; loaded: number; total: number; cached: boolean }
+  | { type: "loading"; stage: "model" | "corpus" | "runtime"; loaded: number; total: number; cached: boolean }
   | { type: "ready"; recognizer: string; threads: number; loadMs: number }
   | { type: "error"; message: string; fatal: boolean }
   | { type: "events"; events: PipelineEvent[] }

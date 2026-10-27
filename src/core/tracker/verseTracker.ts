@@ -269,7 +269,9 @@ export class VerseTracker {
   private risk(v: VerseRef, heardFraction: number): { score: number; reasons: string[] } {
     const reasons: string[] = [];
     let score = 0;
-    if (v.s === 1 && v.a === 1) {
+    // In salah, a basmala at the start of a rak'ah opens Al-Fatihah; anywhere else it could
+    // open any surah, so it waits for the verse after it.
+    if (v.s === 1 && v.a === 1 && !this.expectsFatihah()) {
       score += 2;
       reasons.push("basmala opens many surahs");
     }
@@ -327,19 +329,42 @@ export class VerseTracker {
       return;
     }
     if (this.segmentConfirms.has(k)) return;
-    // Early confirmation of the expected next verse from its own words.
     const rel = this.relation(placed);
-    if (!this.pending && (rel === "next" || rel === "skip1")) {
-      if (o.matched.length >= this.continuationWords(this.cursor.total) && o.matched.length > 0) {
-        this.continuation(placed, o.t, o.evidence, out);
-      }
+    if (this.pending || (rel !== "next" && rel !== "skip1")) return;
+    // On course: the reciter is moving through a passage verse by verse, so the next verse is
+    // confirmed as soon as its *opening* word is mostly and confidently heard — never before.
+    // (Noise aligned to the next verse after the imam stops never has a confident opening word:
+    // measured on the hall and pocket benchmark streams.)
+    const firstWord = o.evidence ? o.evidence.first === true : o.matched.length >= 1;
+    if (rel === "next" && this.onCourse() && firstWord) {
+      this.continuation(placed, o.t, o.evidence, out);
+      return;
     }
+    // Otherwise (a verse skipped by the recogniser, or nothing confident yet) wait for more words.
+    if (o.matched.length >= this.continuationWords(this.cursor.total) && o.matched.length > 0) {
+      this.continuation(placed, o.t, o.evidence, out);
+    }
+  }
+
+  /**
+   * The last confirmed verse belongs to a passage being recited right now: same segment (no
+   * pause since), and recently. Reciters in salah do not skip verses or jump mid-passage.
+   */
+  private onCourse(): boolean {
+    const L = this.last;
+    if (!L || this.weak.length) return false;
+    return L.segment === this.segment && this.lastActivityT - L.t < 20;
   }
 
   /** Confirm a continuation verse, or hold it while its words carry no confident evidence. */
   private continuation(v: VerseRef, t: number, evidence: WordEvidence | undefined, out: TrackerEvent[], extra: { ambiguousWith?: VerseRef[] } = {}): void {
     if (strongEnough(evidence)) {
       this.flushWeak(this.weak.length - 1, t, out);
+      // A verse the recogniser skipped between two confirmed neighbours was still recited.
+      const L = this.last;
+      if (L && L.v.s === v.s && v.a === L.v.a + 2 && L.segment === this.segment && !this.segmentConfirms.has(`${v.s}:${v.a - 1}`)) {
+        this.confirm({ s: v.s, a: v.a - 1 }, t, "inferred", out);
+      }
       this.confirm(v, t, "continuation", out, extra);
       return;
     }

@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { playback } from "../app/audio";
 import { clearLibrary, importFiles, setHostedUrl } from "../app/library";
 import { pushEngineSettings } from "../app/listener";
-import { clearSessions, loadSessions, saveSettings, setState, useApp, type Settings as S } from "../app/store";
+import { notify, saveSettings, setState, useApp, type Settings as S } from "../app/store";
+import { downloadAllText, importTranslationFile } from "../app/translationText";
 import { quranIndex } from "../core/quran/quranIndex";
 import { PRIORS } from "../core/tracker/priors";
 import type { PrayerContext, Sensitivity } from "../core/types";
@@ -60,7 +61,7 @@ const SENS_NOTE: Record<Sensitivity, string> = {
   fast: "Shows new locations sooner, with a higher chance of a wrong verse in noisy rooms.",
 };
 
-export function Settings({ onClose }: { onClose: () => void }) {
+export function Settings({ onClose, onOpenLibrary, onOpenSessions }: { onClose: () => void; onOpenLibrary: () => void; onOpenSessions: () => void }) {
   const s = useApp((st) => st.settings);
   const lib = useApp((st) => st.library);
   const engine = useApp((st) => st.engine);
@@ -68,7 +69,8 @@ export function Settings({ onClose }: { onClose: () => void }) {
   const folderRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState(s.libraryUrl);
-  const [sessions, setSessions] = useState(loadSessions);
+  const textRef = useRef<HTMLInputElement>(null);
+  const [textProgress, setTextProgress] = useState<number | null>(null);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -112,32 +114,48 @@ export function Settings({ onClose }: { onClose: () => void }) {
         </section>
 
         <section>
-          <h3>Your translation files</h3>
+          <h3>Your translation audio</h3>
           <p>
             {lib.ayahFiles || lib.surahFiles
-              ? `${lib.ayahFiles.toLocaleString()} verse ${lib.ayahFiles === 1 ? "file" : "files"} and ${lib.surahFiles} whole-surah ${lib.surahFiles === 1 ? "file" : "files"} on this device${lib.ayahFiles < quranIndex.verseCount ? ` (${(quranIndex.verseCount - lib.ayahFiles).toLocaleString()} verses have no file)` : ""}.`
-              : "No files yet. Choose the folder that holds files named like 29-11.mp3 or 92-02.mp3, whole-surah files like 104.mp3, and optionally start.mp3 and stop.mp3."}
-            {lib.duplicates.length ? ` ${lib.duplicates.length} duplicate names were ignored (for example ${lib.duplicates[0]}).` : ""}
+              ? `${lib.ayahFiles.toLocaleString()} of ${quranIndex.verseCount.toLocaleString()} verses · ${lib.surahFiles} whole-surah ${lib.surahFiles === 1 ? "file" : "files"}`
+              : "No files yet. Add the folder with files named like 29-11.mp3 or 92-02.mp3 (and 104.mp3 for whole surahs)."}
           </p>
           {lib.importing && (
             <div className="field">
               <div className="loadbar"><i style={{ width: `${(lib.importing.done / lib.importing.total) * 100}%` }} /></div>
-              <p className="loadtext">Saving {lib.importing.done.toLocaleString()} of {lib.importing.total.toLocaleString()} files to this device…</p>
+              <p className="loadtext">Saving {lib.importing.done.toLocaleString()} of {lib.importing.total.toLocaleString()} files to this phone…</p>
             </div>
           )}
           <div className="btnrow">
-            <button className="btn primary" onClick={() => folderRef.current?.click()} disabled={!!lib.importing}>Choose folder</button>
-            <button className="btn" onClick={() => filesRef.current?.click()} disabled={!!lib.importing}>Choose files</button>
-            {lib.ayahFiles + lib.surahFiles > 0 && <button className="btn danger" onClick={() => void clearLibrary()}>Remove from this device</button>}
+            {lib.ayahFiles + lib.surahFiles > 0 && <button className="btn primary" onClick={onOpenLibrary}>Browse and play</button>}
+            <button className={`btn${lib.ayahFiles + lib.surahFiles > 0 ? "" : " primary"}`} onClick={() => folderRef.current?.click()} disabled={!!lib.importing}>Add folder</button>
+            <button className="btn" onClick={() => filesRef.current?.click()} disabled={!!lib.importing}>Add files</button>
           </div>
           <input ref={folderRef} type="file" hidden multiple accept="audio/mpeg,.mp3" {...({ webkitdirectory: "", directory: "" } as Record<string, string>)} onChange={(e) => e.target.files && void importFiles(e.target.files)} />
           <input ref={filesRef} type="file" hidden multiple accept="audio/mpeg,.mp3" onChange={(e) => e.target.files && void importFiles(e.target.files)} />
-          <p>Files stay on this phone; nothing is uploaded. If your browser can't pick a folder, open the folder in "Choose files" and select all.</p>
-          <div className="field">
-            <label htmlFor="liburl"><b>Or a hosted folder</b></label>
-            <input id="liburl" type="url" placeholder="translations/  or  https://example.com/translations/" value={url} onChange={(e) => setUrl(e.target.value)}
-              onBlur={() => { if (url !== s.libraryUrl) { update({ libraryUrl: url }); void setHostedUrl(url); } }} />
+          <details>
+            <summary>More options</summary>
+            <p>Files stay on this phone; nothing is uploaded. If your browser can't pick a folder, use Add files and select them all.{lib.duplicates.length ? ` ${lib.duplicates.length} duplicate names were ignored (for example ${lib.duplicates[0]}).` : ""}</p>
+            <div className="field">
+              <label htmlFor="liburl"><b>Hosted folder</b> (optional)</label>
+              <input id="liburl" type="url" placeholder="translations/" value={url} onChange={(e) => setUrl(e.target.value)}
+                onBlur={() => { if (url !== s.libraryUrl) { update({ libraryUrl: url }); void setHostedUrl(url); } }} />
+            </div>
+            {lib.ayahFiles + lib.surahFiles > 0 && <button className="btn danger" onClick={() => { if (confirm("Remove all translation files from this phone?")) void clearLibrary(); }}>Remove files from this phone</button>}
+          </details>
+        </section>
+
+        <section>
+          <h3>Passage summaries</h3>
+          <p>When a passage ends, it's summarised in English using Abdel Haleem's translation, loaded from Quran.com and kept on this phone.</p>
+          <div className="btnrow">
+            <button className="btn" disabled={textProgress !== null} onClick={() => {
+              setTextProgress(0);
+              void downloadAllText((n) => setTextProgress(n)).then((ok) => { setTextProgress(null); notify(ok === 114 ? "The full translation text is saved for offline use." : `Saved ${ok} of 114 surahs; the rest will load when needed.`, ok === 114 ? "info" : "warn"); });
+            }}>{textProgress === null ? "Save all for offline" : `Saving… ${textProgress}/114`}</button>
+            <button className="btn" onClick={() => textRef.current?.click()}>Use my own file</button>
           </div>
+          <input ref={textRef} type="file" hidden accept=".json,.txt,application/json,text/plain" onChange={(e) => e.target.files?.[0] && void importTranslationFile(e.target.files[0])} />
         </section>
 
         <section>
@@ -158,25 +176,9 @@ export function Settings({ onClose }: { onClose: () => void }) {
         </section>
 
         <section>
-          <h3>Past sessions</h3>
-          {sessions.length === 0 ? (
-            <p>Sessions are kept on this device after you stop listening.</p>
-          ) : (
-            <>
-              <ul className="sessions">
-                {sessions.map((x) => (
-                  <li key={x.startedAt}>
-                    <span>{new Date(x.startedAt).toLocaleString([], { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })} · {PRIORS[x.prayer]?.label}</span>
-                    <span>
-                      {x.entries.length} verses
-                      {x.entries.length ? ` · ${x.entries[0]!.v.s}:${x.entries[0]!.v.a} … ${x.entries[x.entries.length - 1]!.v.s}:${x.entries[x.entries.length - 1]!.v.a}` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="btnrow"><button className="btn danger" onClick={() => { clearSessions(); setSessions([]); }}>Clear past sessions</button></div>
-            </>
-          )}
+          <h3>Sessions</h3>
+          <p>Every listening session is kept on this phone, with its passages and their English summaries.</p>
+          <div className="btnrow"><button className="btn" onClick={onOpenSessions}>Open sessions</button></div>
         </section>
 
         <section>
@@ -191,7 +193,7 @@ export function Settings({ onClose }: { onClose: () => void }) {
             <dt>Speech vs noise</dt>
             <dd>{q ? `${q.snrDb.toFixed(0)} dB · gain ${q.gainDb >= 0 ? "+" : ""}${q.gainDb.toFixed(0)} dB` : "—"}</dd>
           </dl>
-          <p>Recognition runs entirely on this phone; no audio leaves it. Model: Tilawa streaming Zipformer (Quran-Lab weights, NPL-1.2 — free, non-commercial use). Quran text: Tanzil Uthmani (CC-BY 3.0).</p>
+          <p>Recognition runs entirely on this phone; no audio leaves it. Model: Tilawa streaming Zipformer (Quran-Lab weights, NPL-1.2 — free, non-commercial use). English summaries: M.A.S. Abdel Haleem's translation (Oxford University Press) via Quran.com.</p>
         </section>
       </div>
     </>

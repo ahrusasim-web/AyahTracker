@@ -14,6 +14,8 @@ export interface WordEvidence {
   strong: number;
   /** Words aligned but contradicted by what was heard. */
   wrong: number;
+  /** The verse's first word is (mostly) heard, closely and confidently. */
+  first?: boolean;
 }
 
 /**
@@ -41,7 +43,8 @@ export type ConfirmVia =
   | "continuation" // the expected next verse(s), supported by its own words
   | "discovery" // a new location found by search and accepted on its own evidence
   | "corroborated" // a held location confirmed by the verse after it, or by hearing nearly all of it
-  | "repeat"; // the same verse recited again after a pause
+  | "repeat" // the same verse recited again after a pause
+  | "inferred"; // missed by the recogniser between two confirmed neighbours of a running passage
 
 export interface ConfirmedVerse {
   id: number;

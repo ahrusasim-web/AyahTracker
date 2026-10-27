@@ -56,7 +56,12 @@ export interface AppState {
   sessionStartedAt: number | null;
   quality: { snrDb: number; levelDb: number; gainDb: number; speech: boolean } | null;
   playback: PlaybackState;
-  library: LibraryStats & { source: "device" | "url" | "device+url" | "none"; importing: { done: number; total: number } | null };
+  library: LibraryStats & {
+    source: "device" | "url" | "device+url" | "none";
+    importing: { done: number; total: number } | null;
+    /** Verse files per surah (index 0 = surah 1) and whole-surah files, for files on this device. */
+    coverage: { verses: number[]; surahFile: boolean[] };
+  };
   settings: Settings;
   notice: { text: string; tone: "info" | "warn" | "error" } | null;
   mediaKeysAvailable: boolean;
@@ -121,7 +126,10 @@ let state: AppState = {
   sessionStartedAt: null,
   quality: null,
   playback: { current: null, paused: false, queued: [], missing: null, skipped: 0 },
-  library: { ayahFiles: 0, surahFiles: 0, missingAyahs: 6236, duplicates: [], ignored: 0, cues: [], source: "none", importing: null },
+  library: {
+    ayahFiles: 0, surahFiles: 0, missingAyahs: 6236, duplicates: [], ignored: 0, cues: [], source: "none", importing: null,
+    coverage: { verses: new Array<number>(114).fill(0), surahFile: new Array<boolean>(114).fill(false) },
+  },
   settings: loadSettings(),
   notice: null,
   mediaKeysAvailable: typeof navigator !== "undefined" && "mediaSession" in navigator,

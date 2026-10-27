@@ -1,7 +1,8 @@
 import type { PipelineEvent } from "../core/pipeline";
 import type { ConfirmedVerse } from "../core/types";
 import { quranIndex } from "../core/quran/quranIndex";
-import { installMediaSession, playCue, playback, setKeepAlive, updateMediaSession } from "./audio";
+import { installMediaSession, playCue, playback, prefetchClip, setKeepAlive, updateMediaSession } from "./audio";
+import { prefetchSurah } from "./translationText";
 import { getState, notify, saveSession, setState, type HistoryEntry } from "./store";
 import type { EngineSettings, FromWorker, ToWorker } from "./worker/protocol";
 
@@ -102,6 +103,9 @@ function onEvent(ev: PipelineEvent): void {
         tentative: s.tentative && s.tentative.v.s === entry.v.s && s.tentative.v.a === entry.v.a ? null : s.tentative,
       }));
       playback.onConfirmed(ev.entry);
+      prefetchSurah(entry.v.s); // the passage summary's English text, ready by the time it ends
+      const nextV = quranIndex.next(entry.v);
+      if (nextV) prefetchClip(nextV); // the next verse's translation, ready the moment it's confirmed
       updateMediaSession(title(entry.v), true);
       persist();
       break;

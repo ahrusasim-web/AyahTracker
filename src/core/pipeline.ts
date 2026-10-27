@@ -9,11 +9,15 @@ export interface PipelineOptions {
   /** Reset the recogniser after this long without new recitation (s). Lets a verse be heard again. */
   pauseResetSec: number;
   /**
-   * Also reset after this long without any confidently heard word, even if the recogniser keeps
-   * emitting tokens (crowd murmur during ruku and sujud does that). Only applies once something
-   * was confidently heard since the last reset, so it never interrupts an initial search (s).
+   * Also reset when the recogniser keeps aligning sound to verses for this long without a single
+   * confidently heard word — crowd murmur during ruku and sujud does that (s).
    */
   evidencePauseSec: number;
+  /**
+   * …or when nothing has been confidently heard for this long at all, while tokens keep coming.
+   * Long enough that the search for the next passage after Al-Fatihah is never interrupted (s).
+   */
+  evidenceSearchSec: number;
   /** Process audio in chunks of this many samples at 16 kHz (320 ms default). */
   chunkSamples: number;
 }
@@ -23,6 +27,7 @@ export const DEFAULT_PIPELINE: PipelineOptions = {
   conditioner: DEFAULT_CONDITIONER,
   pauseResetSec: 4,
   evidencePauseSec: 7,
+  evidenceSearchSec: 15,
   chunkSamples: 5120,
 };
 
@@ -46,6 +51,7 @@ export class RecognitionPipeline {
   private activitySinceReset = false;
   private lastActivityCount = 0;
   private lastEvidenceT = 0;
+  private lastProgressT = 0;
   private evidenceSinceReset = false;
   private lastStrong = "";
   private qualityTick = 0;
@@ -137,6 +143,7 @@ export class RecognitionPipeline {
       this.activitySinceReset = true;
     }
     for (const o of obs) {
+      if (o.kind === "progress") this.lastProgressT = t;
       if ((o.kind === "progress" || o.kind === "match") && o.evidence && o.evidence.strong > 0) {
         const k = `${o.v.s}:${o.v.a}:${o.evidence.strong}`;
         if (k !== this.lastStrong) {
@@ -149,7 +156,12 @@ export class RecognitionPipeline {
     }
 
     const silent = this.activitySinceReset && t - this.lastActivityT >= this.opts.pauseResetSec;
-    const noEvidence = this.evidenceSinceReset && t - this.lastEvidenceT >= this.opts.evidencePauseSec;
+    const sinceEvidence = t - this.lastEvidenceT;
+    const aligningNoise = this.lastProgressT > this.lastEvidenceT + 1 && t - this.lastProgressT < 2;
+    const noEvidence =
+      this.evidenceSinceReset &&
+      this.activitySinceReset &&
+      ((aligningNoise && sinceEvidence >= this.opts.evidencePauseSec) || sinceEvidence >= this.opts.evidenceSearchSec);
     if (silent || noEvidence) {
       this.rec.reset();
       this.rec.setHint(this.tracker.hint());

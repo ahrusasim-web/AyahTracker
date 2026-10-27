@@ -1,6 +1,5 @@
 import { quranIndex } from "../core/quran/quranIndex";
 import { useApp } from "../app/store";
-import { useVerseText } from "../app/verseText";
 import { Rosette } from "./Rosette";
 
 /** The current verse: confirmed (verdigris), being heard (brass trace), or nothing yet. */
@@ -16,34 +15,21 @@ export function Now() {
   const showTentative = !!tentative && !(last && last.v.s === tentative.v.s && last.v.a === tentative.v.a);
   const v = showTentative ? tentative!.v : (last?.v ?? null);
   const surah = v ? quranIndex.surah(v.s) : null;
-  const text = useVerseText(v);
-
   const state: "idle" | "tentative" | "confirmed" = v ? (showTentative ? "tentative" : "confirmed") : "idle";
-  let label = "No verse yet";
-  if (v && surah) label = `${showTentative ? "Identifying" : "Confirmed"}: Surah ${v.s}, ${surah.nameEn}, Ayah ${v.a}`;
-
-  const idleText = listen !== "listening" ? (engineStatus === "ready" ? "Ready" : engineStatus === "error" ? "Unavailable" : "Loading…") : tracker === "identifying" ? "Identifying…" : tracker === "paused" ? "Paused" : "Listening…";
+  const label = v && surah ? `${showTentative ? "Identifying" : "Confirmed"}: Surah ${v.s}, ${surah.nameEn}, Ayah ${v.a}` : "No verse yet";
+  const idleText =
+    listen !== "listening"
+      ? engineStatus === "ready" ? "Ready" : engineStatus === "error" ? "Unavailable" : "Loading…"
+      : tracker === "identifying" ? "Identifying…" : tracker === "paused" ? "Paused" : "Listening…";
 
   return (
     <section className="now" aria-live="polite" aria-atomic="true">
-      {surah ? (
-        <>
-          <h1 className="surah-ar" lang="ar">{surah.name}</h1>
-          <p className="surah-en">
-            <strong>Surah {surah.n}</strong> · {surah.nameEn}
-          </p>
-        </>
-      ) : (
-        <>
-          <h1 className="surah-ar" lang="ar" aria-hidden="true">&nbsp;</h1>
-          <p className="surah-en">&nbsp;</p>
-        </>
-      )}
+      <h1 className="surah-title">{surah ? surah.nameEn : " "}</h1>
+      <p className="surah-en">{surah ? `Surah ${surah.n} · ${surah.ayahs} ayahs` : " "}</p>
       <Rosette state={state} progress={showTentative ? tentative!.progress : 1} label={label}>
         {v ? v.a : idleText}
       </Rosette>
-      <p className="ayah-of">{v && surah ? `Ayah ${v.a} of ${surah.ayahs}` : ""}</p>
-      {text && <p className="verse-ar" lang="ar">{text}</p>}
+      <p className="ayah-of">{v && surah ? `Ayah ${v.a}` : ""}</p>
       {showTentative && tentative!.reason === "pending" && <p className="hint">Checking — waiting for more of the recitation before confirming</p>}
       {showTentative && tentative!.reason === "tracking" && <p className="hint">Hearing this verse ({tentative!.matchedWords} of {tentative!.totalWords} words)</p>}
       {!showTentative && last?.ambiguousWith?.length ? (

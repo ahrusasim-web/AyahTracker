@@ -12,7 +12,7 @@ export function Playing() {
         <span className="bars" aria-hidden="true"><i /><i /><i /></span>
         <span className="what">
           {c.kind === "surah" ? `Full translation of ${name}` : `Translation of ${c.v.s}:${c.v.a}`}
-          <small>{c.manual ? "Replay" : pb.queued.length ? `${pb.queued.length} waiting` : name}</small>
+          <small>{pb.queued.length ? `${pb.queued.length} more after this` : c.manual ? name : "Following the recitation"}</small>
         </span>
         <button className="textbtn" onClick={() => playback.togglePause()}>{pb.paused ? "Resume" : "Pause"}</button>
         <button className="textbtn" onClick={() => (c.manual ? playback.stopAll() : playback.skip())}>{c.manual ? "Stop" : "Skip"}</button>

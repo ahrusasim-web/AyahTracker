@@ -59,12 +59,24 @@ describe("RecognitionPipeline", () => {
     const strong = { heard: 3, strong: 2, wrong: 0 };
     const script = new Map<number, Omit<Observation, "t">[]>();
     script.set(1, [{ kind: "activity" }, { kind: "match", v: { s: 1, a: 7 }, confidence: 0.6, evidence: strong }]);
-    for (let i = 2; i < 40; i++) script.set(i, [{ kind: "activity" }]); // murmur: tokens, no evidence
+    // murmur: tokens and noise aligned to the next verse, never a confident word
+    for (let i = 2; i < 40; i++) script.set(i, [{ kind: "activity" }, { kind: "progress", v: { s: 2, a: 1 }, wordIndex: 0, totalWords: 1, matched: [0], evidence: { heard: 1, strong: 0, wrong: 0 } }]);
     const rec = new Scripted(script);
     const p = new RecognitionPipeline(rec, { tracker: { prayer: "isha" } });
     let segments = 0;
     for (let i = 0; i < 40; i++) for (const e of await p.push(chunk)) if (e.type === "segment") segments++;
     expect(segments).toBe(1); // ~7 s after the last confident word, once
+  });
+
+  it("does not reset while searching for the next passage after Al-Fatihah", async () => {
+    const strong = { heard: 3, strong: 2, wrong: 0 };
+    const script = new Map<number, Omit<Observation, "t">[]>();
+    script.set(1, [{ kind: "activity" }, { kind: "match", v: { s: 1, a: 7 }, confidence: 0.6, evidence: strong }]);
+    for (let i = 2; i < 36; i++) script.set(i, [{ kind: "activity" }]); // ~11 s of new recitation, not yet located
+    const rec = new Scripted(script);
+    const p = new RecognitionPipeline(rec);
+    for (let i = 0; i < 36; i++) await p.push(chunk);
+    expect(rec.resets).toBe(0);
   });
 });
 

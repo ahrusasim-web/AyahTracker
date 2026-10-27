@@ -109,11 +109,16 @@ export class PlaybackController {
 
   /** Tap on history: replay that verse's translation now. */
   playManual(entryId: number, v: VerseRef, kind: "ayah" | "surah" = "ayah"): void {
-    const item: PlayItem = { entryId, kind, v, manual: true };
-    this.queue = this.queue.filter((q) => !q.manual);
-    this.queue.unshift(item);
+    this.playSequence([{ entryId, kind, v }]);
+  }
+
+  /** Play several clips in order now (a passage, or a surah from a chosen verse). */
+  playSequence(items: { entryId: number; kind: "ayah" | "surah"; v: VerseRef }[]): void {
+    if (!items.length) return;
+    const manual: PlayItem[] = items.map((i) => ({ ...i, manual: true }));
+    this.queue = [...manual, ...this.queue.filter((q) => !q.manual)];
     this.paused = false;
-    if (this.current) this.player.stop(); // pump picks up the manual item next
+    if (this.current) this.player.stop(); // pump picks up the first manual item next
     this.emit();
     void this.pump();
   }
@@ -158,6 +163,7 @@ export class PlaybackController {
         this.emit();
         const r = await this.player.play(item);
         if (r === "missing") this.missing = item.v;
+        else if (r === "ended") this.missing = null;
         this.current = null;
         this.emit();
       }

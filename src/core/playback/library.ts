@@ -108,6 +108,21 @@ export class TranslationLibrary {
     return this.surah.get(s) ?? null;
   }
 
+  /** Ayah numbers of surah s that have a verse file, ascending. */
+  ayahsOf(s: number): number[] {
+    const out: number[] = [];
+    for (let a = 1; a <= quranIndex.ayahCount(s); a++) if (this.ayah.has(`${s}:${a}`)) out.push(a);
+    return out;
+  }
+
+  /** Verse-file count per surah (index 0 = surah 1) and which surahs have a whole-surah file. */
+  coverage(): { verses: number[]; surahFile: boolean[] } {
+    const verses = new Array<number>(114).fill(0);
+    for (const k of this.ayah.keys()) verses[Number(k.split(":")[0]) - 1]!++;
+    const surahFile = Array.from({ length: 114 }, (_, i) => this.surah.has(i + 1));
+    return { verses, surahFile };
+  }
+
   resolveCue(c: "start" | "stop"): ClipSource | null {
     return this.cue.get(c) ?? null;
   }

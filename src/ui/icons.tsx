@@ -15,3 +15,15 @@ export const MoreIcon = () => (
 export const CloseIcon = () => (
   <svg viewBox="0 0 24 24" {...s}><path d="M6 6l12 12M18 6L6 18" /></svg>
 );
+export const BackIcon = () => (
+  <svg viewBox="0 0 24 24" {...s}><path d="M15 5l-7 7 7 7" /></svg>
+);
+export const SessionsIcon = () => (
+  <svg viewBox="0 0 24 24" {...s}><circle cx="12" cy="12" r="8.5" /><path d="M12 7.5V12l3 2" /></svg>
+);
+export const ChevronIcon = () => (
+  <svg viewBox="0 0 24 24" {...s}><path d="M9 5l7 7-7 7" /></svg>
+);
+export const PlayIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z" /></svg>
+);

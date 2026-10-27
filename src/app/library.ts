@@ -49,7 +49,7 @@ function deviceSource(name: string): ClipSource {
 function publish(): void {
   const st = device.stats();
   const source = device.size && hosted ? "device+url" : device.size ? "device" : hosted ? "url" : "none";
-  setState((s) => ({ library: { ...st, source, importing: s.library.importing } }));
+  setState((s) => ({ library: { ...st, source, importing: s.library.importing, coverage: device.coverage() } }));
 }
 
 export async function initLibrary(): Promise<void> {
@@ -172,6 +172,16 @@ export async function resolveCue(c: "start" | "stop"): Promise<Blob | string | n
     }
   }
   return null;
+}
+
+/** Ayahs of surah s with a verse file on this device. */
+export function deviceAyahs(s: number): number[] {
+  return device.ayahsOf(s);
+}
+
+/** A hosted folder is set (its contents can't be listed, only looked up). */
+export function hasHosted(): boolean {
+  return !!hosted;
 }
 
 export function hasSurahClip(s: number): boolean {

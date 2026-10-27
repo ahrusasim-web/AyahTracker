@@ -9,7 +9,6 @@ declare const self: DedicatedWorkerGlobalScope;
 
 const MODEL = "models/zipformer_a0w_ep1_a05.int8.onnx";
 const CORPUS = "models/zipformer_quran.json";
-const TEXT = "models/quran.json";
 const CACHE = "ayah-live-models-v1";
 
 let pipeline: RecognitionPipeline | null = null;
@@ -29,7 +28,7 @@ let sessionId = 0;
 const post = (m: FromWorker, transfer: Transferable[] = []) => self.postMessage(m, transfer);
 
 /** Fetch with progress, served from Cache Storage after the first download. */
-async function fetchCached(url: string, stage: "model" | "corpus" | "text"): Promise<ArrayBuffer> {
+async function fetchCached(url: string, stage: "model" | "corpus"): Promise<ArrayBuffer> {
   let cache: Cache | null = null;
   try {
     cache = await caches.open(CACHE);
@@ -83,17 +82,15 @@ async function init(baseUrl: string, s: EngineSettings): Promise<void> {
   // The WebAssembly runtime is bundled by Vite next to this worker (no wasmPaths needed).
   ort.env.wasm.numThreads = threads;
   post({ type: "loading", stage: "runtime", loaded: 0, total: 1, cached: false });
-  const [model, corpus, text] = await Promise.all([
+  const [model, corpus] = await Promise.all([
     fetchCached(new URL(MODEL, baseUrl).href, "model"),
     fetchCached(new URL(CORPUS, baseUrl).href, "corpus"),
-    fetchCached(new URL(TEXT, baseUrl).href, "text"),
   ]);
   const dec = new TextDecoder();
   const rec = await TilawaRecognizer.create({
     ort,
     model: new Uint8Array(model),
     corpus: JSON.parse(dec.decode(corpus)),
-    quran: JSON.parse(dec.decode(text)),
     executionProviders: ["wasm"],
   });
   pipeline = new RecognitionPipeline(rec, {

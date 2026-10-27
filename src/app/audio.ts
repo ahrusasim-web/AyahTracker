@@ -8,6 +8,18 @@ const base = document.baseURI;
 class ElementPlayer implements ClipPlayer {
   private el = new Audio();
   private url: string | null = null;
+  /** Translation clips resolved ahead of time (the verse the reciter is expected to start next). */
+  private ready = new Map<string, Blob | string>();
+
+  /** Look up the next verse's clip now, so it starts the instant that verse is confirmed. */
+  async prefetch(v: { s: number; a: number }): Promise<void> {
+    const k = `${v.s}:${v.a}`;
+    if (this.ready.has(k)) return;
+    const src = await resolveAyahClip(v).catch(() => null);
+    if (!src) return;
+    this.ready.set(k, src);
+    while (this.ready.size > 4) this.ready.delete(this.ready.keys().next().value!);
+  }
   private finish: ((r: "ended" | "stopped" | "missing" | "error") => void) | null = null;
 
   constructor() {
@@ -27,7 +39,10 @@ class ElementPlayer implements ClipPlayer {
   }
 
   async play(item: PlayItem): Promise<"ended" | "stopped" | "missing" | "error"> {
-    const src = item.kind === "surah" ? await resolveSurahClip(item.v.s) : await resolveAyahClip(item.v);
+    const k = `${item.v.s}:${item.v.a}`;
+    const pre = item.kind === "ayah" ? this.ready.get(k) : undefined;
+    if (pre) this.ready.delete(k);
+    const src = pre ?? (item.kind === "surah" ? await resolveSurahClip(item.v.s) : await resolveAyahClip(item.v));
     if (!src) return "missing";
     return new Promise((resolve) => {
       this.finish = resolve;
@@ -53,7 +68,9 @@ class ElementPlayer implements ClipPlayer {
   }
 }
 
-export const playback = new PlaybackController(new ElementPlayer(), getState().settings.playbackMode);
+const player = new ElementPlayer();
+export const playback = new PlaybackController(player, getState().settings.playbackMode);
+export const prefetchClip = (v: { s: number; a: number }) => void player.prefetch(v);
 playback.autoPlay = getState().settings.autoTranslate;
 playback.subscribe((p) => setState({ playback: p }));
 
