@@ -212,7 +212,7 @@ for (const variant of variants) {
     a.n++; a.exp += sc.expected; a.hits += sc.hits; a.wrong += sc.wrong; a.conf += sc.confirmed; a.exact += sc.exact ? 1 : 0;
     if (sc.latencyStart != null) { a.latS.push(sc.latencyStart); a.latE.push(sc.latencyEnd!); }
     a.ms += r.computeMs; a.sec += r.audioSec;
-    if (!sc.exact) a.errors.push(`${s.id}: expected ${s.expected.map((e) => e.join(":")).join(" ")} | got ${r.confirmations.map((c) => key(c.v) + (c.via ? "(" + ({ continuation: "C", corroborated: "K", discovery: "D", repeat: "R" } as Record<string, string>)[c.via] + ")" : "")).join(" ")}`);
+    if (!sc.exact) a.errors.push(`${s.id}: expected ${s.expected.map((e) => e.join(":")).join(" ")} | got ${r.confirmations.map((c) => key(c.v) + (c.via ? "(" + ({ continuation: "C", corroborated: "K", discovery: "D", repeat: "R", inferred: "I", completed: "E" } as Record<string, string>)[c.via] + ")" : "")).join(" ")}`);
   }
   for (const [g, a] of agg) {
     const [cond, kind] = g.split("|");

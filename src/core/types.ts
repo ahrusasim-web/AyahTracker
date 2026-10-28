@@ -44,7 +44,8 @@ export type ConfirmVia =
   | "discovery" // a new location found by search and accepted on its own evidence
   | "corroborated" // a held location confirmed by the verse after it, or by hearing nearly all of it
   | "repeat" // the same verse recited again after a pause
-  | "inferred"; // missed by the recogniser between two confirmed neighbours of a running passage
+  | "inferred" // missed by the recogniser between two confirmed verses of a running passage
+  | "completed"; // the end of a surah, recited after the last verse heard but not recognised
 
 export interface ConfirmedVerse {
   id: number;

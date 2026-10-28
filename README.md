@@ -101,9 +101,24 @@ Rules, in order:
   search also leans toward it, and its translation clip is pre-loaded so playback starts
   instantly. It is never confirmed from zero words: the app does not pre-play the next verse
   before it is heard, because the one time that guess fails is when the imam stops for ruku.
-- **No gaps.** If the recogniser misses a verse between two confirmed neighbours (102:2 → 102:4),
-  the one in between (102:3) is filled in, marked "between two heard verses" — reciters in salah
-  don't skip.
+- **No gaps.** Reciters in salah don't skip verses, so a verse the recogniser misses inside a
+  running passage is filled in, and its translation plays, marked "not clearly heard". One
+  verse between two confirmed neighbours (102:2 → 102:4) is always filled. Up to 7 are filled
+  when the recogniser picks the passage up again a few verses on in the same surah, provided
+  enough time has passed for them to have been recited (at least half the session's measured
+  pace). If that much time hasn't passed, the jump is held like any other.
+- **Surah endings.** Short surahs and surah endings are recited to the end. If a passage stops
+  at most 3 ayahs (≤20 words) short of its surah's end, and recitation carried on after the
+  last verse heard for long enough to cover most of the rest at the measured pace, the
+  remaining verses are confirmed ("end of the surah, not clearly heard") when the passage ends:
+  at a pause, when the recitation moves to another surah, or when listening stops. This is how
+  a missed 102:8 or 1:7 still gets its translation. A passage that stops further from the end
+  (e.g. 2:1–5) is never extended.
+- **Surah openings.** A surah recited right after Al-Fatihah starts at its first verse. If the
+  first verse heard is its 2nd or 3rd (openings like *Ha Mim*, *Qaf* or *Al-Haqqah* are short and
+  easy to miss), the opening is filled in, provided there was time to recite it. This only
+  applies straight after Al-Fatihah: on its own, a verse heard first is never extended
+  backwards.
 - **Continuation that only noise supports.** Crowd murmur after a passage can get aligned to the
   next verse; such a verse has no confidently heard word (measured: distance ≤ 0.2 and model
   margin ≥ 0.5 on at least one word). It is held until a confident verse follows and dropped at
@@ -185,10 +200,15 @@ recitation — Arabic-sounding audio that is not Quran in order; nothing should 
 
 | Condition | Single verse (80) | Salah, 2 rak'ahs (12) | Starts mid-passage (16) | Noise only (10) |
 |---|---|---|---|---|
-| clean | 90% · 0 wrong | 99.7% · 0 wrong | 100% · 0 wrong | 0 false |
+| clean | 90% · 0 wrong | 100% · 0 wrong | 100% · 0 wrong | 0 false |
 | mild room | 90% · 0 wrong | 99.7% · 0 wrong | 100% · 0 wrong | 0 false |
-| mosque hall | 77.5% · 0 wrong | 97.2% · 0 wrong | 100% · 0 wrong | 0 false |
-| phone in pocket | 49% · 0 wrong | 73.8% · 1 wrong | 76% · 0 wrong | 0 false |
+| mosque hall | 77.5% · 0 wrong | 98.2% · 0 wrong | 100% · 0 wrong | 0 false |
+| phone in pocket | 49% · 0 wrong | 83.7% · 1 wrong | 79% · 0 wrong | 0 false |
+
+Filling in verses that were recited but not recognised (gaps, surah openings after Al-Fatihah,
+surah endings) took phone-in-pocket salah from 73.8% to 83.7% and mosque hall from 97.2% to
+98.2% (clean: 100%), with no new wrong verses — every verse filled in on these streams had been
+recited. The one pocket error (107:7) predates this.
 
 **Bare Tilawa SDK** on the same streams (its own verse events, no tracker):
 

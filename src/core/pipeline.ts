@@ -103,6 +103,11 @@ export class RecognitionPipeline {
     return [{ type: "segment", t }, ...this.tracker.observe({ kind: "segment", t })];
   }
 
+  /** Listening stopped: let the tracker complete a surah ending it missed. */
+  finish(): PipelineEvent[] {
+    return this.tracker.finish();
+  }
+
   /** Push any amount of 16 kHz audio; processes whole chunks as they fill. */
   async push(pcm: Float32Array): Promise<PipelineEvent[]> {
     const out: PipelineEvent[] = [];

@@ -162,6 +162,65 @@ describe("VerseTracker", () => {
     expect(evs.filter((e) => e.type === "dropped").length).toBe(2);
   });
 
+  it("completes a surah whose last verse was recited but not recognised", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(102, 5), match(102, 6), match(102, 7)]);
+    // the imam carries on reciting (102:8, unrecognised), then pauses for ruku'
+    const evs = run(t, [...Array.from({ length: 40 }, act), seg()]);
+    expect(confirmed(evs)).toEqual(["102:8"]);
+    expect(evs.find((e) => e.type === "confirmed")).toMatchObject({ entry: { via: "completed" } });
+  });
+
+  it("does not complete a surah when the recitation stopped at the last verse heard", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(102, 5), match(102, 6), match(102, 7)]);
+    expect(confirmed(run(t, [act(), act(), seg()]))).toEqual([]);
+  });
+
+  it("never completes a long ending, or a passage stopped well before the end", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(2, 281), match(2, 282), match(2, 283)]); // 2:284–286 is far more than a few words
+    expect(confirmed(run(t, [...Array.from({ length: 300 }, act), seg()]))).toEqual([]);
+    const u = new VerseTracker();
+    run(u, [act(), match(91, 3), match(91, 4), match(91, 5)]); // ten verses left
+    expect(confirmed(run(u, [...Array.from({ length: 300 }, act), seg()]))).toEqual([]);
+  });
+
+  it("completes the surah when listening stops just after it", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(102, 5), match(102, 6), match(102, 7), ...Array.from({ length: 40 }, act)]);
+    expect(confirmed(t.finish())).toEqual(["102:8"]);
+  });
+
+  it("completes Al-Fatihah when the recitation moves on to a surah", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(1, 2), match(1, 3), match(1, 4), match(1, 5), ...Array.from({ length: 60 }, act)]);
+    const evs = run(t, [match(108, 1), match(108, 2)]);
+    expect(confirmed(evs)).toEqual(["1:6", "1:7", "108:1", "108:2"]);
+  });
+
+  it("fills in a surah's opening missed straight after Al-Fatihah, but not without Al-Fatihah", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(1, 5), match(1, 6), match(1, 7), ...Array.from({ length: 80 }, act)]);
+    expect(confirmed(run(t, [match(69, 2), match(69, 3)]))).toEqual(["69:1", "69:2", "69:3"]);
+    const u = new VerseTracker();
+    expect(confirmed(run(u, [act(), ...Array.from({ length: 80 }, act), match(69, 2), match(69, 3)]))).toEqual(["69:2", "69:3"]);
+  });
+
+  it("fills several verses missed mid-passage once the recogniser finds its place again", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(36, 1), match(36, 2)]);
+    const evs = run(t, [...Array.from({ length: 90 }, act), match(36, 6)]);
+    expect(confirmed(evs)).toEqual(["36:3", "36:4", "36:5", "36:6"]);
+    expect(evs.filter((e) => e.type === "confirmed" && e.entry.via === "inferred").length).toBe(3);
+  });
+
+  it("holds a jump ahead that comes too soon for the verses between to have been recited", () => {
+    const t = new VerseTracker();
+    run(t, [act(), match(36, 1), match(36, 2)]);
+    expect(confirmed(run(t, [match(36, 6)]))).toEqual([]);
+  });
+
   it("does not re-confirm verses found again after a restart inside noisy recitation", () => {
     const t = new VerseTracker();
     run(t, [act(), match(1, 2), match(1, 3), match(1, 4), match(1, 5)]);

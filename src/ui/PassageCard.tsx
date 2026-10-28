@@ -46,8 +46,8 @@ export function PassageCard({ p, live = false }: { p: Passage; live?: boolean })
         ))}
       {!live && p.unconfirmed.length > 0 && (
         <p className="note">
-          {p.unconfirmed.length === 1 ? `Ayah ${p.unconfirmed[0]} wasn't heard clearly` : `Ayahs ${p.unconfirmed.join(", ")} weren't heard clearly`}; included because the passage ran
-          through {p.unconfirmed.length === 1 ? "it" : "them"}.
+          {p.unconfirmed.length === 1 ? `Ayah ${p.unconfirmed[0]} wasn't heard clearly` : `Ayahs ${p.unconfirmed.join(", ")} weren't heard clearly`}; included because the recitation
+          carried on through {p.unconfirmed.length === 1 ? "it" : "them"}.
         </p>
       )}
       {!live && (

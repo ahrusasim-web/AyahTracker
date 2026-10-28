@@ -51,7 +51,7 @@ export function buildPassages(entries: PassageEntry[]): Passage[] {
     cur!.endedAt = Math.max(cur!.endedAt, e.wall);
   }
   for (const p of out) {
-    const have = new Set(entries.filter((e) => p.entryIds.includes(e.id) && e.via !== "inferred").map((e) => e.v.a));
+    const have = new Set(entries.filter((e) => p.entryIds.includes(e.id) && e.via !== "inferred" && e.via !== "completed").map((e) => e.v.a));
     for (let a = p.from; a <= p.to; a++) if (!have.has(a)) p.unconfirmed.push(a);
   }
   return out;

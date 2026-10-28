@@ -95,7 +95,8 @@ function Row({ entry, playing, onMenu }: { entry: HistoryEntry; playing: boolean
         <span className="name">
           {surah?.nameEn}
           {entry.ambiguousWith?.length ? <em> · same words in {entry.ambiguousWith.length} other places</em> : null}
-          {entry.via === "inferred" ? <em> · between two heard verses</em> : null}
+          {entry.via === "inferred" ? <em> · not clearly heard</em> : null}
+          {entry.via === "completed" ? <em> · not clearly heard, end of the surah</em> : null}
         </span>
       </button>
       <button className="iconbtn more" aria-label={`More for ${entry.v.s}:${entry.v.a}`} onClick={(e) => {

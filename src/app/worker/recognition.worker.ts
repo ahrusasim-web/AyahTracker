@@ -169,10 +169,17 @@ self.onmessage = (e: MessageEvent<ToWorker>) => {
       if (settings) applySettings(settings);
       listening = true;
       break;
-    case "stop":
+    case "stop": {
       listening = false;
-      chain = chain.then(() => post({ type: "stopped" }));
+      const p = pipeline;
+      const sid = sessionId;
+      chain = chain.then(() => {
+        const events = p && sid === sessionId ? p.finish() : [];
+        if (events.length) post({ type: "events", events });
+        post({ type: "stopped" });
+      });
       break;
+    }
     case "settings":
       applySettings(m.settings);
       break;

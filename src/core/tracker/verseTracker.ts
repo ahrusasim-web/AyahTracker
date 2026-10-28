@@ -21,6 +21,30 @@ export const DEFAULT_TRACKER_CONFIG: TrackerConfig = {
 /** A verse confirmed again this soon, without a silent pause in between, is a duplicate (s). */
 const DUPLICATE_WINDOW_SEC = 30;
 
+/**
+ * Verses the recogniser may miss inside a running passage and still be filled in, once a later
+ * verse of the same surah is confirmed (the reciter does not skip verses mid-passage).
+ */
+const GAP_FILL_MAX = 7;
+/**
+ * A passage that stops this close to its surah's end — at most this many ayahs, and this many
+ * words, short of it — is completed by the reciter: short surahs and surah endings are recited
+ * to the end. The unheard ending is filled in only when the recitation went on long enough
+ * after the last verse heard to have covered it.
+ */
+const END_FILL_MAX_AYAHS = 3;
+const END_FILL_MAX_WORDS = 20;
+/**
+ * A surah begun straight after Al-Fatihah is begun at its first verse. If the first verse heard
+ * is its 2nd or 3rd (the opening was missed — often disjoined letters like Ha Mim or Qaf), the
+ * opening is filled in when there was time to recite it.
+ */
+const OPENING_FILL_MAX_AYAH = 3;
+const OPENING_FILL_MAX_WORDS = 20;
+/** Recitation pace (s per word) before this session has measured one, and its sane range. */
+const DEFAULT_PACE = 0.6;
+const PACE_RANGE: [number, number] = [0.3, 1.5];
+
 /** Discovery risk at or above this is held for corroboration. */
 const RISK_LIMIT: Record<Sensitivity, number> = { careful: 0.5, balanced: 1, fast: 1.5 };
 
@@ -92,6 +116,12 @@ export class VerseTracker {
   private unresolved: ConfirmedVerse | null = null;
   private state: TrackerState = "listening";
   private lastTentativeKey = "";
+  /** Verses confirmed from their own audio in the current segment. */
+  private segmentHeard = 0;
+  /** The most recent verse confirmed from its own audio (not filled in). */
+  private lastHeard: ConfirmedVerse | null = null;
+  /** Durations of consecutive heard verses this session: confirmation-to-confirmation (s). */
+  private paceSamples: { dt: number; words: number }[] = [];
 
   constructor(cfg: Partial<TrackerConfig> = {}, q: QuranIndex = quranIndex) {
     this.cfg = { ...DEFAULT_TRACKER_CONFIG, ...cfg };
@@ -128,6 +158,19 @@ export class VerseTracker {
     this.unresolved = null;
     this.state = "listening";
     this.lastTentativeKey = "";
+    this.segmentHeard = 0;
+    this.lastHeard = null;
+    this.paceSamples = [];
+  }
+
+  /**
+   * Listening stopped: complete a surah ending the recogniser missed, if the recitation went
+   * on long enough to have covered it.
+   */
+  finish(): TrackerEvent[] {
+    const out: TrackerEvent[] = [];
+    this.finishPassage(this.lastActivityT, out);
+    return out;
   }
 
   observe(o: Observation): TrackerEvent[] {
@@ -145,7 +188,10 @@ export class VerseTracker {
         if (!this.engineLocked) this.setState("identifying", out);
         break;
       case "segment":
+        // The passage before this pause: fill in a surah ending that was recited but missed.
+        this.finishPassage(this.lastActivityT, out);
         this.segment++;
+        this.segmentHeard = 0;
         this.afterSilence = o.silent ?? true;
         this.segmentConfirms.clear();
         this.segmentStarted = true;
@@ -360,11 +406,7 @@ export class VerseTracker {
   private continuation(v: VerseRef, t: number, evidence: WordEvidence | undefined, out: TrackerEvent[], extra: { ambiguousWith?: VerseRef[] } = {}): void {
     if (strongEnough(evidence)) {
       this.flushWeak(this.weak.length - 1, t, out);
-      // A verse the recogniser skipped between two confirmed neighbours was still recited.
-      const L = this.last;
-      if (L && L.v.s === v.s && v.a === L.v.a + 2 && L.segment === this.segment && !this.segmentConfirms.has(`${v.s}:${v.a - 1}`)) {
-        this.confirm({ s: v.s, a: v.a - 1 }, t, "inferred", out);
-      }
+      // Verses the recogniser skipped between the last confirmed one and v are filled in by confirm().
       this.confirm(v, t, "continuation", out, extra);
       return;
     }
@@ -431,6 +473,13 @@ export class VerseTracker {
     }
     const heard = this.heardFraction(v);
     const { score, reasons } = this.risk(v, heard);
+    // A few verses further on in the same surah, mid-passage: the recogniser lost the thread and
+    // found it again. Accepted on confident words if enough time has passed for the verses in
+    // between to have been recited (they are filled in); otherwise held like any other jump.
+    if (rel === "near" && !boundary && strongEnough(evidence) && score < RISK_LIMIT[this.cfg.sensitivity] && this.gapPlausible(v, t)) {
+      this.continuation(v, t, evidence, out, { ambiguousWith });
+      return;
+    }
     const jump = !boundary && (rel === "far" || rel === "near" || rel === "back");
     if (jump) reasons.push("jump away from the running passage");
     if (!jump && score < RISK_LIMIT[this.cfg.sensitivity]) {
@@ -440,6 +489,99 @@ export class VerseTracker {
     this.pending = { v, options: this.q.identicalGroup(v), since: t, reasons, jump };
   }
 
+  /** Seconds per word, measured from consecutive verses heard this session. */
+  private pace(): number {
+    let dt = 0, words = 0;
+    for (const p of this.paceSamples) {
+      dt += p.dt;
+      words += p.words;
+    }
+    if (!words) return DEFAULT_PACE;
+    return Math.min(PACE_RANGE[1], Math.max(PACE_RANGE[0], dt / words));
+  }
+
+  private wordsBetween(s: number, fromA: number, toA: number): number {
+    let n = 0;
+    for (let a = fromA; a <= toA; a++) n += this.q.words({ s, a });
+    return n;
+  }
+
+  /** The last confirmed verse and v belong to one running passage (no long pause between). */
+  private sameRun(L: ConfirmedVerse): boolean {
+    if (L.segment === this.segment) return true;
+    // A short pause mid-passage (a breath, or a reset in noise) — not a rak'ah change.
+    return L.segment === this.segment - 1 && this.pauseBefore < this.cfg.rakahPauseSec;
+  }
+
+  /**
+   * Enough time has passed since the last confirmed verse for the verses between it and v to
+   * have been recited — at half the measured pace, so fast recitation still qualifies.
+   */
+  private gapPlausible(v: VerseRef, t: number): boolean {
+    const L = this.weak.length ? { v: this.weak[this.weak.length - 1]!.v, t: this.weak[this.weak.length - 1]!.t } : this.last;
+    if (!L || L.v.s !== v.s || v.a <= L.v.a) return false;
+    if (v.a - L.v.a - 1 > GAP_FILL_MAX) return false;
+    return t - L.t >= 0.5 * this.pace() * this.wordsBetween(v.s, L.v.a, v.a - 1);
+  }
+
+  /** Fill in verses the recogniser missed between the last confirmed verse and v. */
+  private fillGap(v: VerseRef, t: number, out: TrackerEvent[]): void {
+    const L = this.last;
+    if (!L || L.late || L.v.s !== v.s || !this.sameRun(L)) return;
+    const gap = v.a - L.v.a - 1;
+    if (gap < 1 || gap > GAP_FILL_MAX) return;
+    // One verse between two heard neighbours is always filled; longer gaps need the time too.
+    if (gap > 1 && !this.gapPlausible(v, t)) return;
+    for (let a = L.v.a + 1; a < v.a; a++) {
+      if (!this.segmentConfirms.has(`${v.s}:${a}`)) this.confirm({ s: v.s, a }, t, "inferred", out);
+    }
+  }
+
+  /**
+   * A surah recited right after Al-Fatihah starts at its first verse: if the first verse heard is
+   * its 2nd or 3rd, fill in the opening — when the time since Al-Fatihah allowed it to be recited.
+   */
+  private fillOpening(v: VerseRef, t: number, out: TrackerEvent[]): void {
+    if (v.s === 1 || v.a < 2 || v.a > OPENING_FILL_MAX_AYAH) return;
+    const L = this.last;
+    if (!L || L.v.s !== 1 || L.v.a !== 7 || !this.sameRun(L)) return;
+    const H = this.lastHeard;
+    if (!H || H.v.s !== 1) return;
+    const opening = this.wordsBetween(v.s, 1, v.a - 1);
+    if (opening > OPENING_FILL_MAX_WORDS) return;
+    // The rest of Al-Fatihah from the last verse heard, then at least half the opening's words.
+    if (t - H.t < this.pace() * (this.wordsBetween(1, H.v.a, 7) + 0.5 * opening)) return;
+    for (let a = 1; a < v.a; a++) {
+      if (!this.segmentConfirms.has(`${v.s}:${a}`)) this.confirm({ s: v.s, a }, t, "inferred", out);
+    }
+  }
+
+  /**
+   * The running passage ended (a pause, the end of listening, or the recitation moved to another
+   * passage). If it stopped a few short verses before its surah's end and the recitation went on
+   * long enough after the last verse heard to have covered the rest, the reciter finished the
+   * surah: confirm the remaining verses so their translations play too.
+   */
+  private finishPassage(tEnd: number, out: TrackerEvent[]): void {
+    const L = this.last;
+    if (!L || L.late || L.ambiguousWith || L.segment !== this.segment) return;
+    if (this.segmentHeard < 2) return; // a running passage, not a lone verse
+    const s = L.v.s;
+    const total = this.q.ayahCount(s);
+    const remaining = total - L.v.a;
+    if (remaining < 1 || remaining > END_FILL_MAX_AYAHS) return;
+    const restWords = this.wordsBetween(s, L.v.a + 1, total);
+    if (restWords > END_FILL_MAX_WORDS) return;
+    // The last verse heard was confirmed near its start: its own words, then most of the rest.
+    const need = this.pace() * (this.q.words(L.v) + 0.6 * restWords);
+    if (tEnd - L.t < need) return;
+    for (let a = L.v.a + 1; a <= total; a++) {
+      if (!this.segmentConfirms.has(`${s}:${a}`)) this.confirm({ s, a }, tEnd, "completed", out);
+    }
+    this.weak = this.weak.filter((w) => !this.segmentConfirms.has(key(w.v)));
+    if (this.pending && this.segmentConfirms.has(key(this.pending.v))) this.pending = null;
+  }
+
   private confirm(v: VerseRef, t: number, via: ConfirmVia, out: TrackerEvent[], extra: { ambiguousWith?: VerseRef[]; late?: boolean } = {}): void {
     // The recogniser restarted inside noisy recitation and found the same verses again.
     const prev = this.recent.get(key(v));
@@ -447,6 +589,24 @@ export class VerseTracker {
       this.segmentConfirms.add(key(v));
       out.push({ type: "dropped", v, reason: "already confirmed moments ago" });
       return;
+    }
+    const heardIt = via !== "inferred" && via !== "completed";
+    if (heardIt && !extra.late) {
+      const L = this.last;
+      if (L && L.segment === this.segment && v.s !== L.v.s) {
+        // The recitation moved on to another surah: finish the one before it first.
+        this.finishPassage(t, out);
+      } else {
+        this.fillGap(v, t, out);
+      }
+      this.fillOpening(v, t, out);
+      // Pace: the time from one heard verse to the next is the first one's recitation.
+      const P = this.last;
+      if (P && P.segment === this.segment && P.v.s === v.s && v.a === P.v.a + 1 && P.via === "continuation" && via === "continuation" && t > P.t) {
+        this.paceSamples.push({ dt: t - P.t, words: this.q.words(P.v) });
+        if (this.paceSamples.length > 16) this.paceSamples.shift();
+      }
+      this.segmentHeard++;
     }
     this.recent.set(key(v), t);
     // Resolve an earlier ambiguous identical-text entry from what follows it.
@@ -467,6 +627,7 @@ export class VerseTracker {
     if (extra.ambiguousWith?.length) entry.ambiguousWith = extra.ambiguousWith;
     if (extra.late) entry.late = true;
     if (!extra.late) this.last = entry;
+    if (heardIt && !extra.late) this.lastHeard = entry;
     this.segmentConfirms.add(key(v));
     if (entry.ambiguousWith) this.unresolved = entry;
     out.push({ type: "confirmed", entry });
