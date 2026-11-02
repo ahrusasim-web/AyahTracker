@@ -3,6 +3,8 @@ import type { ConfirmedVerse } from "../core/types";
 import { quranIndex } from "../core/quran/quranIndex";
 import { installMediaSession, playCue, playback, prefetchClip, setKeepAlive, updateMediaSession } from "./audio";
 import { prefetchSurah } from "./translationText";
+import { noteSpeechLevel, pruneRecordings, startRecording, stopRecording } from "./recorder";
+import { formatDuration } from "../core/session/recording";
 import { getState, notify, saveSession, setState, type HistoryEntry } from "./store";
 import type { EngineSettings, FromWorker, ToWorker } from "./worker/protocol";
 
@@ -20,6 +22,8 @@ let source: MediaStreamAudioSourceNode | null = null;
 let wakeLock: WakeLockSentinel | null = null;
 let startWall = 0;
 let wantListening = false;
+/** This session's recitation is being (or was) recorded. */
+let sessionRecorded = false;
 
 const send = (m: ToWorker, transfer: Transferable[] = []) => worker?.postMessage(m, transfer);
 
@@ -79,7 +83,10 @@ function onWorker(m: FromWorker): void {
 }
 
 function toEntry(e: ConfirmedVerse): HistoryEntry {
-  return { id: e.id, v: e.v, wall: startWall + e.t * 1000, via: e.via, ambiguousWith: e.ambiguousWith, late: e.late };
+  const entry: HistoryEntry = { id: e.id, v: e.v, wall: startWall + e.t * 1000, via: e.via, ambiguousWith: e.ambiguousWith, late: e.late };
+  if (e.from !== undefined) entry.fromWall = startWall + e.from * 1000;
+  if (e.fromSure) entry.fromSure = true;
+  return entry;
 }
 
 /** Late entries (confirmed after the verse that follows them) go before that verse. */
@@ -123,6 +130,7 @@ function onEvent(ev: PipelineEvent): void {
       break;
     case "quality":
       setState({ quality: { snrDb: ev.quality.snrDb, levelDb: ev.quality.levelDb, gainDb: ev.quality.gainDb, speech: ev.quality.speech } });
+      noteSpeechLevel(ev.quality.speechDb, ev.quality.speech);
       break;
     default:
       break;
@@ -131,7 +139,7 @@ function onEvent(ev: PipelineEvent): void {
 
 function persist(): void {
   const s = getState();
-  if (s.sessionStartedAt) saveSession({ startedAt: s.sessionStartedAt, prayer: s.settings.prayer, entries: s.history });
+  if (s.sessionStartedAt) saveSession({ startedAt: s.sessionStartedAt, prayer: s.settings.prayer, entries: s.history, recorded: sessionRecorded || undefined });
 }
 
 async function acquireWakeLock(): Promise<void> {
@@ -193,6 +201,7 @@ export async function startListening(): Promise<void> {
     setKeepAlive(true);
     updateMediaSession("Listening", true);
     void acquireWakeLock();
+    sessionRecorded = await startRecording(stream, startWall);
   } catch (err) {
     teardown();
     wantListening = false;
@@ -201,7 +210,20 @@ export async function startListening(): Promise<void> {
   }
 }
 
+/** Stop the recorder (before the microphone goes), then save the finished file. */
+function finishRecording(): void {
+  void stopRecording()
+    .then((m) => {
+      if (!m) return;
+      persist();
+      notify(`Recording saved (${formatDuration(m.durationMs)}). Listen again from Sessions.`, "info", 6000);
+      return pruneRecordings();
+    })
+    .catch(() => notify("The recording could not be saved on this phone.", "warn"));
+}
+
 function teardown(): void {
+  finishRecording();
   try {
     source?.disconnect();
     node?.disconnect();

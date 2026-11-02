@@ -40,6 +40,8 @@ export interface AudioQuality {
   speech: boolean;
   /** Current applied gain (dB). */
   gainDb: number;
+  /** Level of the loud parts of speech in the input (dBFS frame RMS, before gain). */
+  speechDb: number;
 }
 
 const SR = 16000;
@@ -121,6 +123,7 @@ export class AudioConditioner {
       levelDb: this.peakLevelDb,
       speech: this.framesSeen > 0 && this.speechFrames / this.framesSeen > 0.2,
       gainDb: this.opts.enabled ? this.gainDb : 0,
+      speechDb: this.speechDb,
     };
     return { out, quality };
   }

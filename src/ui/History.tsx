@@ -33,7 +33,7 @@ export function History() {
 }
 
 /** Timestamped verses: tap to replay a translation, long-press or ⋯ for more. */
-export function VerseList({ entries, newestFirst = false }: { entries: HistoryEntry[]; newestFirst?: boolean }) {
+export function VerseList({ entries, newestFirst = false, onListen }: { entries: HistoryEntry[]; newestFirst?: boolean; onListen?: (e: HistoryEntry) => void }) {
   const current = useApp((s) => s.playback.current);
   const [menu, setMenu] = useState<MenuState | null>(null);
   const rows = newestFirst ? [...entries].reverse() : entries;
@@ -44,7 +44,7 @@ export function VerseList({ entries, newestFirst = false }: { entries: HistoryEn
           <Row key={h.id} entry={h} playing={current?.entryId === h.id && current.kind === "ayah"} onMenu={(x, y) => setMenu({ entry: h, x, y })} />
         ))}
       </ol>
-      {menu && <EntryMenu {...menu} onClose={() => setMenu(null)} />}
+      {menu && <EntryMenu {...menu} onListen={onListen} onClose={() => setMenu(null)} />}
     </>
   );
 }
@@ -109,7 +109,7 @@ function Row({ entry, playing, onMenu }: { entry: HistoryEntry; playing: boolean
   );
 }
 
-function EntryMenu({ entry, x, y, onClose }: MenuState & { onClose: () => void }) {
+function EntryMenu({ entry, x, y, onClose, onListen }: MenuState & { onClose: () => void; onListen?: (e: HistoryEntry) => void }) {
   const ref = useRef<HTMLDivElement>(null);
   const surah = quranIndex.surah(entry.v.s);
   const [pos, setPos] = useState({ left: x, top: y });
@@ -143,6 +143,11 @@ function EntryMenu({ entry, x, y, onClose }: MenuState & { onClose: () => void }
         <button role="menuitem" disabled={!hasSurahClip(entry.v.s)} onClick={act(() => playback.playManual(entry.id, entry.v, "surah"))}>
           Play full surah translation ({entry.v.s}.mp3)
         </button>
+        {onListen && (
+          <button role="menuitem" onClick={act(() => onListen(entry))}>
+            Hear the recitation from here
+          </button>
+        )}
         <button
           role="menuitem"
           onClick={act(() => {

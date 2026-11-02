@@ -221,6 +221,16 @@ describe("VerseTracker", () => {
     expect(confirmed(run(t, [match(36, 6)]))).toEqual([]);
   });
 
+  it("estimates where each verse began, including filled-in ones, in order", () => {
+    const t = new VerseTracker();
+    const evs = run(t, [act(), prog(102, 5, 1), match(102, 5), prog(102, 6, 1), match(102, 6), prog(102, 7, 2), match(102, 7), ...Array.from({ length: 40 }, act), seg()]);
+    const entries = evs.filter((e): e is Extract<TrackerEvent, { type: "confirmed" }> => e.type === "confirmed").map((e) => e.entry);
+    expect(entries.map((e) => `${e.v.s}:${e.v.a}`)).toEqual(["102:5", "102:6", "102:7", "102:8"]);
+    for (const e of entries) expect(e.from).toBeDefined();
+    for (let i = 1; i < entries.length; i++) expect(entries[i]!.from!).toBeGreaterThan(entries[i - 1]!.from!);
+    for (const e of entries) expect(e.from!).toBeLessThanOrEqual(e.t);
+  });
+
   it("does not re-confirm verses found again after a restart inside noisy recitation", () => {
     const t = new VerseTracker();
     run(t, [act(), match(1, 2), match(1, 3), match(1, 4), match(1, 5)]);

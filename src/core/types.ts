@@ -52,6 +52,10 @@ export interface ConfirmedVerse {
   v: VerseRef;
   /** Audio-stream time (s) of the confirmation. */
   t: number;
+  /** Estimated audio-stream time (s) the verse's recitation began, for finding it in a recording. */
+  from?: number;
+  /** `from` was measured from the verse's own words (or the moment recitation resumed), not inferred. */
+  fromSure?: boolean;
   via: ConfirmVia;
   /** Other locations with word-for-word identical text when context could not decide. */
   ambiguousWith?: VerseRef[];

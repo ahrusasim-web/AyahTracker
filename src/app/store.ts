@@ -17,6 +17,8 @@ export interface Settings {
   /** Optional hosted translations folder, e.g. "translations/". */
   libraryUrl: string;
   mediaKeys: boolean;
+  /** Record the recitation while listening, kept on this phone with the session. */
+  record: boolean;
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -30,6 +32,7 @@ export const DEFAULT_SETTINGS: Settings = {
   conditioning: true,
   libraryUrl: "",
   mediaKeys: true,
+  record: true,
 };
 
 export interface HistoryEntry {
@@ -40,12 +43,28 @@ export interface HistoryEntry {
   via: ConfirmVia;
   ambiguousWith?: VerseRef[];
   late?: boolean;
+  /** Estimated wall-clock time the verse's recitation began (ms), for finding it in the recording. */
+  fromWall?: number;
+  /** fromWall was measured from the verse's own words rather than inferred. */
+  fromSure?: boolean;
 }
 
 export interface SavedSession {
   startedAt: number;
   prayer: PrayerContext;
   entries: HistoryEntry[];
+  /** The recitation was recorded (the audio itself is in IndexedDB, keyed by startedAt). */
+  recorded?: boolean;
+}
+
+/** The session recording player (one at a time). */
+export interface RecPlayState {
+  id: number | null;
+  loading: boolean;
+  playing: boolean;
+  /** Position and length (s). */
+  t: number;
+  duration: number;
 }
 
 export type ListenPhase = "idle" | "starting" | "listening" | "stopping";
@@ -68,6 +87,11 @@ export interface AppState {
   settings: Settings;
   notice: { text: string; tone: "info" | "warn" | "error" } | null;
   mediaKeysAvailable: boolean;
+  /** The recording being made right now, if any. */
+  recording: { id: number; startedWall: number } | null;
+  /** Bumped whenever a stored recording is added, finished or removed. */
+  recVersion: number;
+  recPlay: RecPlayState;
 }
 
 const SETTINGS_KEY = "ayahlive.settings.v2";
@@ -105,12 +129,17 @@ export function loadSessions(): SavedSession[] {
   }
 }
 
+/** Sessions kept on this phone (with their recordings). */
+export const SESSIONS_KEPT = 12;
+
 export function saveSession(s: SavedSession): void {
-  if (!s.entries.length) return;
+  if (!s.entries.length && !s.recorded) return;
   try {
     const all = loadSessions().filter((x) => x.startedAt !== s.startedAt);
-    all.unshift(s);
-    localStorage.setItem(SESSIONS_KEY, JSON.stringify(all.slice(0, 12)));
+    const prev = loadSessions().find((x) => x.startedAt === s.startedAt);
+    all.push({ ...s, recorded: s.recorded || prev?.recorded || undefined });
+    all.sort((a, b) => b.startedAt - a.startedAt);
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(all.slice(0, SESSIONS_KEPT)));
   } catch {
     /* ignore */
   }
@@ -140,6 +169,9 @@ let state: AppState = {
   settings: loadSettings(),
   notice: null,
   mediaKeysAvailable: typeof navigator !== "undefined" && "mediaSession" in navigator,
+  recording: null,
+  recVersion: 0,
+  recPlay: { id: null, loading: false, playing: false, t: 0, duration: 0 },
 };
 
 const listeners = new Set<() => void>();

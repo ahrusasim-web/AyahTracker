@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { playback } from "../app/audio";
 import { clearLibrary, importFiles, setHostedUrl } from "../app/library";
 import { pushEngineSettings } from "../app/listener";
+import { deleteAllRecordings, recordingSupported, recordingsSize } from "../app/recorder";
+import { formatSize } from "../core/session/recording";
 import { notify, saveSettings, setState, useApp, type Settings as S } from "../app/store";
 import { downloadAllText, importTranslationFile } from "../app/translationText";
 import { quranIndex } from "../core/quran/quranIndex";
@@ -72,6 +74,11 @@ export function Settings({ onClose, onOpenLibrary, onOpenSessions }: { onClose: 
   const [url, setUrl] = useState(s.libraryUrl);
   const textRef = useRef<HTMLInputElement>(null);
   const [textProgress, setTextProgress] = useState<number | null>(null);
+  const [recBytes, setRecBytes] = useState(0);
+  const recVersion = useApp((st) => st.recVersion);
+  useEffect(() => {
+    void recordingsSize().then(setRecBytes);
+  }, [recVersion]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onClose();
@@ -180,9 +187,21 @@ export function Settings({ onClose, onOpenLibrary, onOpenSessions }: { onClose: 
         </section>
 
         <section>
-          <h3>Sessions</h3>
-          <p>Every listening session is kept on this phone, with its passages and their English summaries.</p>
-          <div className="btnrow"><button className="btn" onClick={onOpenSessions}>Open sessions</button></div>
+          <h3>Sessions and recordings</h3>
+          <p>The last 12 listening sessions are kept on this phone, with their passages and English summaries.</p>
+          {recordingSupported ? (
+            <Toggle checked={s.record} onChange={(record) => update({ record })} title="Record the recitation" detail="Saved with the session on this phone only, about 14 MB an hour. Play it back, jump to any verse, or save it as a file, from Sessions." />
+          ) : (
+            <p>This browser can't record audio, so sessions are kept without recordings.</p>
+          )}
+          <div className="btnrow">
+            <button className="btn" onClick={onOpenSessions}>Open sessions</button>
+            {recBytes > 0 && (
+              <button className="btn danger" onClick={() => { if (confirm("Delete every recording from this phone? Sessions and their verses stay.")) void deleteAllRecordings().then(() => setRecBytes(0)); }}>
+                Delete recordings ({formatSize(recBytes)})
+              </button>
+            )}
+          </div>
         </section>
 
         <section>

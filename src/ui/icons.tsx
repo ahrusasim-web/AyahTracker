@@ -27,3 +27,9 @@ export const ChevronIcon = () => (
 export const PlayIcon = () => (
   <svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5.5v13l11-6.5z" /></svg>
 );
+export const PauseIcon = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor"><rect x="6.5" y="5.5" width="4" height="13" rx="1" /><rect x="13.5" y="5.5" width="4" height="13" rx="1" /></svg>
+);
+export const RecDot = () => (
+  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="5" /></svg>
+);

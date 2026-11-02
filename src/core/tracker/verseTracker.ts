@@ -120,6 +120,10 @@ export class VerseTracker {
   private segmentHeard = 0;
   /** The most recent verse confirmed from its own audio (not filled in). */
   private lastHeard: ConfirmedVerse | null = null;
+  /** Estimated start (stream time, s) of verses whose words the recogniser has begun to align. */
+  private startedAt = new Map<string, number>();
+  /** When recitation (any new tokens) resumed in the current segment (s). */
+  private segmentStartT: number | null = null;
   /** Durations of consecutive heard verses this session: confirmation-to-confirmation (s). */
   private paceSamples: { dt: number; words: number }[] = [];
 
@@ -160,7 +164,9 @@ export class VerseTracker {
     this.lastTentativeKey = "";
     this.segmentHeard = 0;
     this.lastHeard = null;
+    this.segmentStartT = null;
     this.paceSamples = [];
+    this.startedAt.clear();
   }
 
   /**
@@ -183,6 +189,7 @@ export class VerseTracker {
         if (this.awaitingFirstActivity) {
           this.pauseBefore = this.lastActivityT === -Infinity ? Infinity : o.t - this.lastActivityT;
           this.awaitingFirstActivity = false;
+          this.segmentStartT = Math.max(0, o.t - 0.6); // tokens lag the audio by a chunk or so
         }
         this.lastActivityT = o.t;
         if (!this.engineLocked) this.setState("identifying", out);
@@ -192,6 +199,8 @@ export class VerseTracker {
         this.finishPassage(this.lastActivityT, out);
         this.segment++;
         this.segmentHeard = 0;
+        this.segmentStartT = null;
+        this.startedAt.clear();
         this.afterSilence = o.silent ?? true;
         this.segmentConfirms.clear();
         this.segmentStarted = true;
@@ -357,6 +366,10 @@ export class VerseTracker {
     this.cursor = { v: placed, matched: o.matched.length, total: o.totalWords || this.q.words(placed), t: o.t };
     this.engineLocked = true;
     const k = key(placed);
+    if (o.matched.length >= 1 && !this.startedAt.has(k)) {
+      // The words up to the cursor were recited before this chunk ended (≈0.3 s model delay).
+      this.startedAt.set(k, Math.max(0, o.t - 0.3 - (o.wordIndex + 1) * this.pace()));
+    }
     // A held proposal is corroborated by the recogniser moving on into the verse after it,
     // or by hearing nearly all of its own words.
     if (this.pending) {
@@ -489,6 +502,30 @@ export class VerseTracker {
     this.pending = { v, options: this.q.identicalGroup(v), since: t, reasons, jump };
   }
 
+  /**
+   * Where a verse without aligned words began: a filled-in verse follows on from the verse before
+   * it at the measured pace; a verse heard only through the recogniser's gate began about half a
+   * verse before it.
+   */
+  private estimateStart(v: VerseRef, t: number, via: ConfirmVia): number | undefined {
+    const P = this.last;
+    if ((via === "inferred" || via === "completed") && P && P.v.s === v.s && P.v.a < v.a) {
+      const pStart = P.from ?? P.t - 1;
+      return Math.max(0, pStart + this.pace() * this.wordsBetween(v.s, P.v.a, v.a - 1));
+    }
+    if (via === "inferred") return undefined;
+    return Math.max(0, t - 0.3 - this.pace() * Math.ceil(this.q.words(v) / 2));
+  }
+
+  /** A verse confirmed without its own aligned words, just before one that has them. */
+  private startBeforeNext(v: VerseRef): number | undefined {
+    for (const d of [1, 2]) {
+      const next = this.startedAt.get(`${v.s}:${v.a + d}`);
+      if (next !== undefined) return Math.max(0, next - this.pace() * this.wordsBetween(v.s, v.a, v.a + d - 1));
+    }
+    return undefined;
+  }
+
   /** Seconds per word, measured from consecutive verses heard this session. */
   private pace(): number {
     let dt = 0, words = 0;
@@ -551,8 +588,11 @@ export class VerseTracker {
     if (opening > OPENING_FILL_MAX_WORDS) return;
     // The rest of Al-Fatihah from the last verse heard, then at least half the opening's words.
     if (t - H.t < this.pace() * (this.wordsBetween(1, H.v.a, 7) + 0.5 * opening)) return;
+    // Placed before the verse heard first, at the measured pace.
+    const vStart = this.startedAt.get(key(v)) ?? t - 0.3 - this.pace() * Math.ceil(this.q.words(v) / 2);
     for (let a = 1; a < v.a; a++) {
-      if (!this.segmentConfirms.has(`${v.s}:${a}`)) this.confirm({ s: v.s, a }, t, "inferred", out);
+      const from = Math.max(0, vStart - this.pace() * this.wordsBetween(v.s, a, v.a - 1));
+      if (!this.segmentConfirms.has(`${v.s}:${a}`)) this.confirm({ s: v.s, a }, t, "inferred", out, { from });
     }
   }
 
@@ -582,7 +622,7 @@ export class VerseTracker {
     if (this.pending && this.segmentConfirms.has(key(this.pending.v))) this.pending = null;
   }
 
-  private confirm(v: VerseRef, t: number, via: ConfirmVia, out: TrackerEvent[], extra: { ambiguousWith?: VerseRef[]; late?: boolean } = {}): void {
+  private confirm(v: VerseRef, t: number, via: ConfirmVia, out: TrackerEvent[], extra: { ambiguousWith?: VerseRef[]; late?: boolean; from?: number } = {}): void {
     // The recogniser restarted inside noisy recitation and found the same verses again.
     const prev = this.recent.get(key(v));
     if (prev !== undefined && !this.afterSilence && t - prev < DUPLICATE_WINDOW_SEC) {
@@ -624,6 +664,19 @@ export class VerseTracker {
       this.unresolved = null;
     }
     const entry: ConfirmedVerse = { id: this.nextId++, v, t, via, segment: this.segment };
+    const own = extra.from === undefined ? this.startedAt.get(key(v)) : undefined;
+    let sure = own !== undefined;
+    let from = extra.from ?? own ?? this.startBeforeNext(v) ?? this.estimateStart(v, t, via);
+    // The first verse heard after a pause: the passage began when the recitation resumed (the
+    // recogniser often needs several words to find where it is).
+    if (heardIt && this.segmentHeard === 1 && this.segmentStartT !== null && from !== undefined && from - this.segmentStartT < 30) {
+      if (this.segmentStartT <= from) sure = true;
+      from = Math.min(from, this.segmentStartT);
+    }
+    if (from !== undefined) {
+      entry.from = Math.min(from, t);
+      if (sure) entry.fromSure = true;
+    }
     if (extra.ambiguousWith?.length) entry.ambiguousWith = extra.ambiguousWith;
     if (extra.late) entry.late = true;
     if (!extra.late) this.last = entry;

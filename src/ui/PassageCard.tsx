@@ -10,7 +10,7 @@ function rangeText(p: Passage): string {
 }
 
 /** A recited passage: where it was, when, and Abdel Haleem's English for it as one paragraph. */
-export function PassageCard({ p, live = false }: { p: Passage; live?: boolean }) {
+export function PassageCard({ p, live = false, onListen }: { p: Passage; live?: boolean; onListen?: () => void }) {
   const surah = quranIndex.surah(p.s);
   const text = usePassageText(p.s, p.from, p.to, !live);
   const count = p.to - p.from + 1;
@@ -55,6 +55,11 @@ export function PassageCard({ p, live = false }: { p: Passage; live?: boolean })
           <button className="textbtn" onClick={play}>
             Play translation audio
           </button>
+          {onListen && (
+            <button className="textbtn" onClick={onListen}>
+              Hear the recitation
+            </button>
+          )}
           {text.status === "ready" && <small>{text.source === "import" ? "Your imported translation" : "Abdel Haleem"}</small>}
         </footer>
       )}

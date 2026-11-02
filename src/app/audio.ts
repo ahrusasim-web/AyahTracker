@@ -131,17 +131,43 @@ export function setKeepAlive(on: boolean): void {
   } else keepAlive?.pause();
 }
 
+/**
+ * While a session recording is open (and the app isn't listening), media keys control that
+ * recording instead of listening.
+ */
+export interface MediaKeyTarget {
+  play(): void;
+  pause(): void;
+  seekBy(sec: number): void;
+}
+let keyTarget: MediaKeyTarget | null = null;
+export function setMediaKeyTarget(t: MediaKeyTarget | null): void {
+  keyTarget = t;
+}
+
 export function installMediaSession(toggle: () => void): boolean {
   if (!("mediaSession" in navigator)) return false;
   const ms = navigator.mediaSession;
-  const handler = () => {
+  const handler = (action: MediaSessionAction) => () => {
+    if (keyTarget && getState().listen === "idle") {
+      if (action === "play") keyTarget.play();
+      else keyTarget.pause();
+      return;
+    }
     if (getState().settings.mediaKeys) toggle();
   };
   for (const action of ["play", "pause", "stop"] as MediaSessionAction[]) {
     try {
-      ms.setActionHandler(action, handler);
+      ms.setActionHandler(action, handler(action));
     } catch {
       /* action not supported */
+    }
+  }
+  for (const [action, sec] of [["seekbackward", -10], ["seekforward", 10]] as [MediaSessionAction, number][]) {
+    try {
+      ms.setActionHandler(action, () => keyTarget?.seekBy(sec));
+    } catch {
+      /* not supported */
     }
   }
   try {
@@ -152,12 +178,12 @@ export function installMediaSession(toggle: () => void): boolean {
   return true;
 }
 
-export function updateMediaSession(title: string, listening: boolean): void {
+export function updateMediaSession(title: string, listening: boolean, artist?: string): void {
   if (!("mediaSession" in navigator)) return;
   try {
     navigator.mediaSession.metadata = new MediaMetadata({
       title,
-      artist: listening ? "Listening — press play/pause to stop" : "Stopped — press play/pause to listen",
+      artist: artist ?? (listening ? "Listening — press play/pause to stop" : "Stopped — press play/pause to listen"),
       album: "Ayah Live",
       artwork: [{ src: new URL("icons/icon-512.png", base).href, sizes: "512x512", type: "image/png" }],
     });

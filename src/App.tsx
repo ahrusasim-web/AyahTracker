@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { initLibrary } from "./app/library";
 import { initEngine, toggleListening } from "./app/listener";
+import { initRecordings } from "./app/recorder";
 import { setState, useApp } from "./app/store";
 import { PRIORS } from "./core/tracker/priors";
 import { buildPassages } from "./core/session/passages";
@@ -18,6 +19,7 @@ function StatusLine() {
   const tracker = useApp((s) => s.tracker);
   const engine = useApp((s) => s.engine);
   const prayer = useApp((s) => s.settings.prayer);
+  const recording = useApp((s) => s.recording !== null);
   let dot = "", text = "Not listening";
   if (engine.status === "error") { dot = "err"; text = "Recogniser failed to load"; }
   else if (listen === "starting") { dot = "on"; text = "Starting the microphone"; }
@@ -28,7 +30,7 @@ function StatusLine() {
   return (
     <div className="status" role="status">
       <span className={`dot ${dot}`} aria-hidden="true" />
-      <span><b>{text}</b>{prayer !== "general" ? ` · ${PRIORS[prayer].label}` : ""}</span>
+      <span><b>{text}</b>{prayer !== "general" ? ` · ${PRIORS[prayer].label}` : ""}{recording && listen === "listening" ? <span className="rec"> · Recording</span> : null}</span>
     </div>
   );
 }
@@ -108,6 +110,7 @@ export function App() {
   useEffect(() => {
     initEngine();
     void initLibrary();
+    void initRecordings();
   }, []);
 
   const overlay =

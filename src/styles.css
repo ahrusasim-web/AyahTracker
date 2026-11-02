@@ -279,3 +279,31 @@ button { cursor: pointer; }
 .sheet details { margin-top: 10px; }
 .sheet summary { cursor: pointer; color: var(--stone-dim); font-size: 15px; padding: 6px 0; }
 .sheet details[open] summary { margin-bottom: 4px; }
+
+/* Session recording */
+.status .rec { color: var(--rose); font-weight: 600; }
+.sessionlist .when em + em { color: var(--stone-faint); }
+.reccard { background: var(--ink-2); border-radius: 14px; padding: 12px 12px 6px; margin: 0 0 14px; box-shadow: inset 0 0 0 1px var(--line); }
+.reccard.live { padding-bottom: 12px; }
+.recnote { margin: 0; font-size: 15px; color: var(--stone-dim); display: flex; align-items: center; gap: 6px; }
+.recnote svg { width: 18px; height: 18px; color: var(--rose); flex: none; }
+.recrow { display: flex; align-items: center; gap: 12px; }
+.playbtn { flex: none; width: 48px; height: 48px; border-radius: 50%; border: 0; background: var(--brass); color: var(--on-brass); display: grid; place-items: center; }
+.playbtn svg { width: 22px; height: 22px; }
+.playbtn:disabled { opacity: 0.45; }
+.rectrack { flex: 1; min-width: 0; }
+.rectrack input[type="range"] { -webkit-appearance: none; appearance: none; width: 100%; height: 28px; background: transparent; margin: 0; touch-action: none; }
+.rectrack input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: linear-gradient(to right, var(--verdigris) var(--pos, 0%), var(--line) var(--pos, 0%)); }
+.rectrack input[type="range"]::-moz-range-track { height: 4px; border-radius: 2px; background: var(--line); }
+.rectrack input[type="range"]::-moz-range-progress { height: 4px; border-radius: 2px; background: var(--verdigris); }
+.rectrack input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: var(--stone); margin-top: -6px; border: 0; }
+.rectrack input[type="range"]::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: var(--stone); border: 0; }
+.rectimes { display: flex; justify-content: space-between; font-size: 13px; color: var(--stone-faint); font-variant-numeric: tabular-nums; margin-top: -2px; }
+.recactions { display: flex; flex-wrap: wrap; align-items: center; margin: 6px -6px 0; }
+.recactions .spacer { flex: 1; }
+.recactions .textbtn:disabled { opacity: 0.45; }
+.recmeta { margin: 0 0 4px; font-size: 13px; color: var(--stone-faint); }
+.recgone { margin: 0 0 14px; font-size: 14px; color: var(--stone-faint); }
+.listenhint { margin: 0 0 8px; font-size: 14px; color: var(--stone-faint); }
+.passage footer { flex-wrap: wrap; justify-content: flex-start; }
+.passage footer small { margin-left: auto; }

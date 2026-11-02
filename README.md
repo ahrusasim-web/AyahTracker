@@ -4,7 +4,8 @@ A mobile-first web app (PWA) that listens to Quran recitation — an imam in sal
 or your own recitation — identifies the surah and ayah being recited as it happens, plays
 **your own** pre-recorded English translation of each verse (`29-11.mp3`, `104.mp3` …), and
 when a passage ends, summarises it ("Al-Mulk, Ayahs 1–4") with Abdel Haleem's English
-translation as one paragraph. Every session is kept on the phone to browse later.
+translation as one paragraph. Every session is kept on the phone to browse later, with a
+recording of the recitation to listen to again.
 
 Recognition runs entirely on the phone. No audio is sent anywhere.
 
@@ -67,11 +68,37 @@ cached on the phone after that and the app works offline.
    (JSON keyed `"2:255"`, or `surah|ayah|text` lines).
 5. **Tap** a verse to replay its translation; **long-press** (or ⋯) for *Play full surah translation*.
 6. The **clock icon** opens every past session: its passages with their summaries, and every verse.
-7. Earbud **play/pause** toggles listening (see limitations below).
+7. **Recording.** While listening, the recitation is recorded too (*Settings → Sessions and
+   recordings → Record the recitation*, on by default). Open the session to play it back: scrub,
+   skip 10 s, *Hear the recitation* on a passage, or long-press a verse → *Hear the recitation
+   from here* to jump straight to it. *Save* downloads it as a file (`Ayah Live 2026-11-02 13.05
+   Jummah.webm`) to keep or share; *Delete* removes it.
+8. Earbud **play/pause** toggles listening (see limitations below). While a recording is open and
+   you're not listening, it plays and pauses the recording instead.
 
 Use earbuds: translations played through the phone speaker are heard by the microphone. If you
 must use the speaker, turn on *Translations play through the phone speaker* (browser echo
 cancellation).
+
+### Recordings
+
+- The microphone stream the recogniser uses is also fed to the browser's `MediaRecorder`: Opus in
+  WebM at 32 kbit/s (MP4 on Safari), about **14 MB an hour**, mono, unprocessed (no noise
+  suppression or automatic gain, same as recognition).
+- Every 3 s the newest piece is written to IndexedDB, so if the phone kills the page mid-prayer
+  at most a few seconds are lost; the next time the app opens, an unfinished recording is
+  completed and given a session. When listening stops, the pieces are joined into one file with
+  its duration written into the header, so it can be seeked.
+- Playback goes through a gain and a limiter set from the speech level measured while recording,
+  so a phone several rows back (imam at around −40 dBFS) plays back at a normal volume.
+- Jumping to a verse uses when the recogniser first aligned that verse's words; verses found
+  late or filled in are placed between measured neighbours in proportion to their words. On a
+  test recording of Al-Fatihah in mosque-hall conditions the jump points were within about a second
+  of the true verse starts.
+- Recordings live with their sessions (the last 12) and are deleted with them. The app asks the
+  browser for persistent storage so recordings aren't cleared when space runs low; if storage
+  fills up, recording stops and listening continues. Nothing is uploaded.
+- Playback is disabled while listening (the microphone would hear it).
 
 ---
 
